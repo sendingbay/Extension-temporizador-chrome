@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Task Timer",
+  "name": "Daily Timer",
   "version": "1.0",
-  "permissions": ["activeTab", "scripting"],
-  "host_permissions": ["<all_urls>"],
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ]
+  "description": "Temporizador de Daily conectado a la base de datos de Notion",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.notion.com/*"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html"
 }
