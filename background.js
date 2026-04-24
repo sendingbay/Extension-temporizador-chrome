@@ -168,6 +168,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ timerState });
           break;
 
+        case "FETCH_FROM_DOM": {
+          // Busca una pestaña de Notion abierta (la activa primero, luego cualquiera)
+          const allTabs = await chrome.tabs.query({ url: "https://www.notion.so/*" });
+          if (allTabs.length === 0) {
+            throw new Error("No hay ninguna pestaña de Notion abierta. Abre tu base de datos en Notion primero.");
+          }
+          // Preferir la pestaña activa de la ventana actual
+          const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true, url: "https://www.notion.so/*" });
+          const tab = activeTabs[0] || allTabs[0];
+
+          let response;
+          try {
+            response = await chrome.tabs.sendMessage(tab.id, { type: "GET_DOM_PARTICIPANTS" });
+          } catch (_) {
+            throw new Error("No se pudo comunicar con la pestaña de Notion. Recarga la página de Notion e inténtalo de nuevo.");
+          }
+
+          const names = response?.names || [];
+          if (names.length === 0) {
+            throw new Error("No se encontraron nombres. Asegúrate de que la base de datos esté abierta en vista tabla o tablero, y que tenga entradas visibles.");
+          }
+
+          const participants = names.map(name => ({ name, taskCount: 1 }));
+          timerState = { ...DEFAULT_STATE, participants };
+          saveState();
+          sendResponse({ success: true, participants });
+          break;
+        }
+
         case "FETCH_PARTICIPANTS": {
           const participants = await fetchParticipants();
           timerState = { ...DEFAULT_STATE, participants };

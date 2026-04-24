@@ -1,83 +1,81 @@
-console.log("🚀 Extension cargada");
-
-
 // ==========================
-// 🧩 LEER TAREAS DEL DOM
+// 🧩 SCRAPER DE DOM — Notion
 // ==========================
-function getTasksFromDOM() {
-    const tasks = document.querySelectorAll("li, .task, div");
+// Este script se inyecta en páginas de notion.so.
+// Escucha mensajes del background y devuelve los nombres
+// extraídos de la vista de base de datos activa.
 
-    return Array.from(tasks)
-        .map(t => t.innerText.trim())
-        .filter(t => t.length > 0);
+function extractNamesFromNotion() {
+  const results = [];
+  const seen    = new Set();
+
+  function add(text) {
+    const t = text?.replace(/\s+/g, " ").trim();
+    if (!t || t.length === 0 || t.length > 80) return;
+    if (seen.has(t)) return;
+    // Descartar textos que son claramente UI de Notion
+    const uiNoise = [
+      "New", "Filter", "Sort", "Search", "Group", "Properties",
+      "Share", "Export", "···", "Add a page", "Calculate",
+      "Untitled", "Sin título"
+    ];
+    if (uiNoise.some(n => t === n)) return;
+    seen.add(t);
+    results.push(t);
+  }
+
+  // ── Estrategia 1: Vista tabla ────────────────────────────────
+  // En Notion, la primera celda de cada fila de tabla contiene el título.
+  // El contenedor de filas tiene role="row" y las celdas role="gridcell".
+  const rows = document.querySelectorAll('[role="row"]');
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('[role="gridcell"]');
+    if (cells.length > 0) {
+      // La primera celda es siempre el título/nombre
+      add(cells[0].textContent);
+    }
+  });
+
+  // ── Estrategia 2: Vista board (tablero) ──────────────────────
+  // Las tarjetas tienen role="button" dentro de columnas
+  if (results.length === 0) {
+    const cards = document.querySelectorAll('[role="button"] [placeholder="Untitled"], [role="button"] [data-content-editable-leaf]');
+    cards.forEach(el => add(el.textContent));
+  }
+
+  // ── Estrategia 3: Vista lista / galería ─────────────────────
+  // Los ítems tienen role="link" o son divs con data-block-id
+  if (results.length === 0) {
+    const links = document.querySelectorAll('[role="link"]');
+    links.forEach(el => {
+      // Tomar solo el texto del primer hijo (título, no propiedades)
+      const first = el.firstElementChild;
+      add(first ? first.textContent : el.textContent);
+    });
+  }
+
+  // ── Estrategia 4: Fallback — cualquier elemento editable ─────
+  // que esté dentro del área de contenido principal (no sidebar)
+  if (results.length === 0) {
+    const main = document.querySelector(
+      ".notion-page-content, [data-content-editable-root], main"
+    );
+    if (main) {
+      main.querySelectorAll("[contenteditable='true']").forEach(el => {
+        // Solo texto de una sola línea (nombres)
+        const t = el.textContent?.trim();
+        if (t && !t.includes("\n")) add(t);
+      });
+    }
+  }
+
+  return results;
 }
 
-console.log("📌 Tasks:", getTasksFromDOM());
-
-
-// ==========================
-// 🧭 BOTÓN EN 3 PUNTITOS
-// ==========================
-function addButtonToMenu() {
-    if (document.getElementById("timer-btn")) return;
-
-    const btn = document.createElement("button");
-    btn.id = "timer-btn";
-    btn.innerText = "⏱ 2 min";
-
-    btn.style.position = "fixed";
-    btn.style.top = "20px";
-    btn.style.right = "20px";
-    btn.style.zIndex = "9999";
-    btn.style.padding = "10px";
-    btn.style.background = "black";
-    btn.style.color = "white";
-    btn.style.border = "none";
-    btn.style.cursor = "pointer";
-
-    btn.onclick = startCountdown;
-
-    document.body.appendChild(btn);
-}
-
-setInterval(addButtonToMenu, 1000);
-
-
-// ==========================
-// ⏱ TIMER 2 MIN
-// ==========================
-let interval = null;
-
-function startCountdown() {
-    let time = 120;
-
-    const timerBox = document.createElement("div");
-
-    timerBox.style.position = "fixed";
-    timerBox.style.bottom = "20px";
-    timerBox.style.right = "20px";
-    timerBox.style.background = "black";
-    timerBox.style.color = "white";
-    timerBox.style.padding = "10px";
-    timerBox.style.fontSize = "20px";
-    timerBox.style.zIndex = 9999;
-
-    document.body.appendChild(timerBox);
-
-    clearInterval(interval);
-
-    interval = setInterval(() => {
-        let minutes = Math.floor(time / 60);
-        let seconds = time % 60;
-
-        timerBox.innerText =
-            `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-
-        time--;
-
-        if (time < 0) {
-            clearInterval(interval);
-            timerBox.innerText = "⏰ Tiempo terminado";
-        }
-    }, 1000);
-}
+// ── Escuchar mensajes del background/popup ───────────────────
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "GET_DOM_PARTICIPANTS") {
+    sendResponse({ names: extractNamesFromNotion() });
+  }
+  return true;
+});

@@ -186,7 +186,28 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUI();
   setInterval(updateUI, 200);
 
-  // ── Botón: Cargar desde Notion ──
+  // ── Botón: Cargar desde DOM (página de Notion abierta) ──
+  document.getElementById("btn-fetch-dom").addEventListener("click", async function () {
+    this.disabled = true;
+    this.textContent = "Leyendo…";
+    setStatus("Leyendo la página de Notion…");
+
+    const res = await send("FETCH_FROM_DOM");
+
+    this.disabled = false;
+    this.textContent = "📄 Desde página";
+
+    if (res?.success) {
+      resetLocalFlags();
+      const n = res.participants.length;
+      setStatus(`✓ ${n} participante${n !== 1 ? "s" : ""} cargado${n !== 1 ? "s" : ""} desde Notion`, "success");
+      setTimeout(() => setStatus(""), 3000);
+    } else {
+      setStatus(res?.error || "Error al leer la página de Notion", "error");
+    }
+  });
+
+  // ── Botón: Cargar desde API de Notion ──
   document.getElementById("btn-fetch").addEventListener("click", async function () {
     this.disabled = true;
     this.textContent = "Cargando…";
@@ -195,12 +216,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const res = await send("FETCH_PARTICIPANTS");
 
     this.disabled = false;
-    this.textContent = "↻ Cargar Notion";
+    this.textContent = "↻ API";
 
     if (res?.success) {
       resetLocalFlags();
       const n = res.participants.length;
-      setStatus(`✓ ${n} participante${n !== 1 ? "s" : ""} cargado${n !== 1 ? "s" : ""}`, "success");
+      setStatus(`✓ ${n} participante${n !== 1 ? "s" : ""} cargado${n !== 1 ? "s" : ""} vía API`, "success");
       setTimeout(() => setStatus(""), 3000);
     } else {
       setStatus(res?.error || "Error al conectar con Notion", "error");
