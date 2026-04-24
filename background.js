@@ -194,103 +194,117 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             function clean(t) {
               return (t || "").replace(/\s+/g, " ").trim().replace(/\s+\d+\s*$/, "").trim();
             }
-
             function isNoise(t) {
               return !t || t.length < 2 || t.length > 60 || NOISE.has(t) || /^\d+$/.test(t);
             }
 
-            function isInScroller(el) {
-              let p = el.parentElement;
-              while (p && p !== document.body) {
-                const s = window.getComputedStyle(p);
-                const oy = s.overflowY;
-                const ox = s.overflowX;
-                if (oy === "auto" || oy === "scroll" || ox === "auto" || ox === "scroll") return true;
-                p = p.parentElement;
+            // Calcular el borde derecho de la barra lateral
+            // La sidebar de Notion ocupa los primeros ~200px del viewport.
+            // Usamos el cover/banner de la página como referencia del inicio del contenido.
+            const sidebarRight = (() => {
+              const covers = document.querySelectorAll("img, div");
+              for (const el of covers) {
+                const r = el.getBoundingClientRect();
+                if (r.top < 10 && r.left > 100 && r.width > 300) return r.left;
               }
-              return false;
-            }
+              return 200;
+            })();
+
+            // Recoger todos los avatares visibles dentro del área de contenido
+            // (tanto img de foto como divs cuadrados con inicial)
+            const avatars = [];
+
+            document.querySelectorAll("img").forEach(img => {
+              const r = img.getBoundingClientRect();
+              if (r.width < 10 || r.width > 42 || r.height < 10 || r.height > 42) return;
+              if (r.left < sidebarRight || r.top < 50 || r.top > window.innerHeight) return;
+              avatars.push({ el: img, r });
+            });
+
+            // Divs con inicial (usuarios sin foto de perfil)
+            document.querySelectorAll("div, span").forEach(el => {
+              const r = el.getBoundingClientRect();
+              if (r.width < 20 || r.width > 42 || Math.abs(r.width - r.height) > 6) return;
+              if (r.left < sidebarRight || r.top < 50 || r.top > window.innerHeight) return;
+              const txt = el.textContent.trim();
+              if (txt.length === 1 && /[A-ZÁÉÍÓÚÜÑ]/i.test(txt)) {
+                avatars.push({ el, r, initial: txt });
+              }
+            });
+
+            // Agrupar por franja Y (cada 20px) → la franja con más avatares
+            // es la fila de cabeceras de columna del board
+            const buckets = new Map();
+            avatars.forEach(av => {
+              const key = Math.round(av.r.top / 20) * 20;
+              if (!buckets.has(key)) buckets.set(key, []);
+              buckets.get(key).push(av);
+            });
+
+            const headerRow = [...buckets.values()]
+              .filter(g => g.length >= 2)
+              .sort((a, b) => b.length - a.length)[0] || [];
+
+            // Ordenar izquierda → derecha (orden visual del board)
+            headerRow.sort((a, b) => a.r.left - b.r.left);
 
             const results = [];
-            const seen = new Set();
+            const seen   = new Set();
 
-            function add(raw) {
+            function add(raw, x) {
               const t = clean(raw);
               if (isNoise(t) || seen.has(t)) return;
               seen.add(t);
-              results.push(t);
+              results.push({ name: t, x: x || 0 });
             }
 
-            // Estrategia 1: role="columnheader" (tablero)
-            document.querySelectorAll('[role="columnheader"]')
-              .forEach(el => add(el.textContent));
+            headerRow.forEach(av => {
+              // Intento 1: aria-label / alt en imágenes de foto
+              if (av.el.tagName === "IMG") {
+                const label = av.el.getAttribute("aria-label") ||
+                              av.el.getAttribute("alt") ||
+                              av.el.getAttribute("title");
+                if (label && label.length > 1 && label.toLowerCase() !== "notion avatar") {
+                  add(label, av.r.left); return;
+                }
+              }
 
-            // Estrategia 2: Cabeceras de columna fuera de scroll containers
-            // Los títulos de columna del board NO están dentro de un scroller;
-            // las tarjetas sí. Buscamos imágenes pequeñas (avatares) que no
-            // están en zonas de scroll y leemos el texto del contenedor más próximo.
-            if (results.length === 0) {
-              document.querySelectorAll("img").forEach(img => {
-                if (isInScroller(img)) return;
-                const rect = img.getBoundingClientRect();
-                if (rect.width < 8 || rect.width > 48 || rect.height > 48) return;
-                // Subir hasta encontrar el contenedor del header de columna
-                let el = img.parentElement;
-                for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
-                  const text = el.textContent || "";
-                  const line = clean(text.split("\n")[0]);
-                  if (!isNoise(line) && line.length <= 50) {
-                    add(line);
-                    break;
+              // Intento 2: subir en el DOM leyendo el primer nodo de texto directo
+              let el = av.el.parentElement;
+              for (let i = 0; i < 8 && el; i++, el = el.parentElement) {
+                for (const child of el.childNodes) {
+                  if (child.nodeType === Node.TEXT_NODE) {
+                    const t = clean(child.textContent);
+                    if (!isNoise(t)) { add(t, av.r.left); return; }
                   }
                 }
-              });
-            }
-
-            // Estrategia 3: Buscar todos los elementos de texto corto
-            // que NO estén dentro de scroll containers (column headers del board)
-            if (results.length === 0) {
-              const walker = document.createTreeWalker(
-                document.body, NodeFilter.SHOW_TEXT,
-                { acceptNode: n => n.textContent.trim().length > 1 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT }
-              );
-              const byParent = new Map();
-              let node;
-              while ((node = walker.nextNode())) {
-                const el = node.parentElement;
-                if (!el || isInScroller(el)) continue;
-                const t = clean(node.textContent);
-                if (isNoise(t)) continue;
-                const parent = el.parentElement || el;
-                if (!byParent.has(parent)) byParent.set(parent, []);
-                byParent.get(parent).push(t);
+                // Primera línea del innerText del contenedor
+                const line = clean((el.innerText || "").split("\n")[0]);
+                if (!isNoise(line) && line.length < 45) { add(line, av.r.left); return; }
               }
-              // Grupos de 3+ hermanos (cabeceras de columna del tablero)
-              byParent.forEach((texts, parent) => {
-                const siblings = parent.children.length;
-                if (texts.length >= 3 && siblings >= 3) {
-                  texts.forEach(t => add(t));
-                }
+            });
+
+            // Fallback: role="columnheader" (si Notion lo implementa)
+            if (results.length === 0) {
+              document.querySelectorAll('[role="columnheader"]').forEach(el => {
+                const r = el.getBoundingClientRect();
+                if (r.left >= sidebarRight) add(el.textContent, r.left);
               });
             }
 
-            // Estrategia 4: Vista tabla — filas con 2+ celdas
+            // Fallback: vista tabla (filas con 2+ celdas)
             if (results.length === 0) {
               document.querySelectorAll('[role="row"]').forEach(row => {
                 const cells = row.querySelectorAll('[role="gridcell"]');
-                if (cells.length >= 2) add(cells[0].textContent);
+                if (cells.length >= 2) {
+                  const r = cells[0].getBoundingClientRect();
+                  if (r.left >= sidebarRight) add(cells[0].textContent, r.left);
+                }
               });
             }
 
-            // Estrategia 5: Vista lista/galería
-            if (results.length === 0) {
-              document.querySelectorAll('[role="link"]').forEach(el => {
-                const first = el.firstElementChild;
-                add(first ? first.textContent : el.textContent);
-              });
-            }
-
-            return results;
+            // Ordenar por posición X y devolver solo los nombres
+            return results.sort((a, b) => a.x - b.x).map(r => r.name);
           }
 
           let names = [];
