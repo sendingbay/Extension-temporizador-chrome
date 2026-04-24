@@ -108,13 +108,18 @@
       display: flex; align-items: center;
       padding: 7px 10px; border-radius: 6px; margin-bottom: 4px;
       border-left: 3px solid transparent;
+      cursor: pointer;
       transition: background .2s;
     }
+    .participant-item:hover { background: rgba(255,255,255,.05); }
     .participant-item.active {
       background: rgba(0,82,204,.22);
       border-left-color: #0052cc;
     }
-    .participant-item.done { opacity: .35; }
+    .participant-item.done   { opacity: .35; }
+    .participant-item.absent { opacity: .35; }
+    .participant-item.absent .p-name { text-decoration: line-through; color: #555; }
+    .participant-item.absent:hover   { opacity: .55; }
 
     .avatar {
       width: 28px; height: 28px; border-radius: 50%;
@@ -129,6 +134,15 @@
       font-size: 11px; color: #666;
       background: #252540; padding: 2px 7px; border-radius: 10px;
     }
+    .btn-absent {
+      background: none; border: none; cursor: pointer;
+      font-size: 13px; color: #444; padding: 2px 5px;
+      border-radius: 4px; margin-left: 4px; flex-shrink: 0;
+      transition: color .15s, background .15s;
+    }
+    .btn-absent:hover { color: #ff5630; background: rgba(255,86,48,.12); }
+    .participant-item.absent .btn-absent { color: #36b37e; }
+    .participant-item.absent .btn-absent:hover { color: #57d9a3; background: rgba(54,179,126,.12); }
 
     .empty-state { text-align: center; padding: 18px; color: #444; font-size: 13px; }
   </style>

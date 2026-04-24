@@ -10,7 +10,8 @@ const DEFAULT_STATE = {
   elapsed: 0,        // ms transcurridos antes del último pause
   duration: 120000,  // 2 minutos en ms
   currentIndex: 0,
-  participants: []   // [{ name: string, taskCount: number }]
+  participants: [],  // [{ name: string, taskCount: number }]
+  absent: []         // índices de participantes marcados como ausentes
 };
 
 let timerState = { ...DEFAULT_STATE };
@@ -232,12 +233,67 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
 
         case "NEXT_PERSON": {
-          const len = timerState.participants.length;
-          timerState.currentIndex = len > 0 ? (timerState.currentIndex + 1) % len : 0;
-          timerState.running   = false;
-          timerState.startTime = null;
-          timerState.elapsed   = 0;
+          const len    = timerState.participants.length;
+          const absent = timerState.absent || [];
+          if (len === 0) { sendResponse({ timerState }); break; }
+
+          let next  = (timerState.currentIndex + 1) % len;
+          let tries = 0;
+          // Saltar ausentes
+          while (absent.includes(next) && tries < len) {
+            next = (next + 1) % len;
+            tries++;
+          }
+          // Si todos están ausentes, no moverse
+          if (tries < len) {
+            timerState.currentIndex = next;
+            timerState.running      = false;
+            timerState.startTime    = null;
+            timerState.elapsed      = 0;
+          }
           saveState();
+          sendResponse({ timerState });
+          break;
+        }
+
+        case "TOGGLE_ABSENT": {
+          const idx    = msg.index;
+          const absent = timerState.absent ? [...timerState.absent] : [];
+          const pos    = absent.indexOf(idx);
+          if (pos === -1) absent.push(idx);
+          else absent.splice(pos, 1);
+          timerState.absent = absent;
+
+          // Si marcamos como ausente a quien tiene el turno, pasar al siguiente
+          if (absent.includes(idx) && timerState.currentIndex === idx) {
+            const len = timerState.participants.length;
+            let next  = (idx + 1) % len;
+            let tries = 0;
+            while (absent.includes(next) && tries < len) {
+              next = (next + 1) % len;
+              tries++;
+            }
+            if (tries < len) {
+              timerState.currentIndex = next;
+              timerState.running      = false;
+              timerState.startTime    = null;
+              timerState.elapsed      = 0;
+            }
+          }
+          saveState();
+          sendResponse({ timerState });
+          break;
+        }
+
+        case "JUMP_TO": {
+          const idx = msg.index;
+          if (idx >= 0 && idx < timerState.participants.length) {
+            timerState.currentIndex = idx;
+            timerState.running      = false;
+            timerState.startTime    = null;
+            timerState.elapsed      = 0;
+            saveState();
+          }
           sendResponse({ timerState });
           break;
         }

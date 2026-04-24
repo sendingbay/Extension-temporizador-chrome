@@ -40,9 +40,9 @@ function playEnd() {
 // 🔄 COMUNICACIÓN CON BACKGROUND
 // ==========================
 
-function send(type) {
+function send(type, data = {}) {
   return new Promise(resolve =>
-    chrome.runtime.sendMessage({ type }, response => resolve(response))
+    chrome.runtime.sendMessage({ type, ...data }, response => resolve(response))
   );
 }
 
@@ -70,7 +70,7 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-function renderParticipants(participants, currentIndex) {
+function renderParticipants(participants, currentIndex, absent) {
   const container = document.getElementById("participants-list");
 
   if (!participants || participants.length === 0) {
@@ -80,19 +80,43 @@ function renderParticipants(participants, currentIndex) {
   }
 
   container.innerHTML = participants.map((p, i) => {
+    const isAbsent = absent.includes(i);
     const cls = [
       "participant-item",
-      i === currentIndex ? "active" : "",
-      i < currentIndex  ? "done"   : ""
+      i === currentIndex && !isAbsent ? "active" : "",
+      i < currentIndex && !isAbsent  ? "done"   : "",
+      isAbsent ? "absent" : ""
     ].filter(Boolean).join(" ");
 
+    const absentTitle = isAbsent ? "Marcar como presente" : "Marcar como ausente";
+    const absentIcon  = isAbsent ? "✓" : "✕";
+
     return `
-      <div class="${cls}">
+      <div class="${cls}" data-index="${i}" title="Ir a ${escapeHtml(p.name)}">
         <div class="avatar">${escapeHtml(p.name.charAt(0).toUpperCase())}</div>
         <span class="p-name">${escapeHtml(p.name)}</span>
         <span class="p-tasks">${p.taskCount} tarea${p.taskCount !== 1 ? "s" : ""}</span>
+        <button class="btn-absent" data-index="${i}" title="${absentTitle}">${absentIcon}</button>
       </div>`;
   }).join("");
+
+  // Clic en la fila → saltar a esa persona
+  container.querySelectorAll(".participant-item").forEach(el => {
+    el.addEventListener("click", async e => {
+      if (e.target.classList.contains("btn-absent")) return;
+      resetLocalFlags();
+      await send("JUMP_TO", { index: parseInt(el.dataset.index, 10) });
+    });
+  });
+
+  // Clic en ✕/✓ → marcar/desmarcar ausente
+  container.querySelectorAll(".btn-absent").forEach(btn => {
+    btn.addEventListener("click", async e => {
+      e.stopPropagation();
+      resetLocalFlags();
+      await send("TOGGLE_ABSENT", { index: parseInt(btn.dataset.index, 10) });
+    });
+  });
 }
 
 function setStatus(msg, type = "") {
@@ -161,19 +185,26 @@ async function updateUI() {
 
   // Persona actual
   const participants = state.participants || [];
+  const absent       = state.absent || [];
   const current = participants[state.currentIndex] || null;
 
   document.getElementById("current-name").textContent =
     current ? escapeHtml(current.name) : "—";
   document.getElementById("current-tasks").textContent =
     current ? `${current.taskCount} tarea${current.taskCount !== 1 ? "s" : ""}` : "";
-  document.getElementById("counter").textContent =
-    participants.length > 0
-      ? `${state.currentIndex + 1} de ${participants.length}`
-      : "";
+
+  const activeTotal     = participants.filter((_, i) => !absent.includes(i)).length;
+  const activeDone      = participants.filter((_, i) => !absent.includes(i) && i < state.currentIndex).length;
+  const absentCount     = absent.length;
+  let counterText = "";
+  if (participants.length > 0) {
+    counterText = `${activeDone + 1} de ${activeTotal}`;
+    if (absentCount > 0) counterText += ` · ${absentCount} ausente${absentCount !== 1 ? "s" : ""}`;
+  }
+  document.getElementById("counter").textContent = counterText;
 
   // Lista de participantes
-  renderParticipants(participants, state.currentIndex);
+  renderParticipants(participants, state.currentIndex, absent);
 }
 
 // ==========================
