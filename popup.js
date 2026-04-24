@@ -101,8 +101,11 @@ function renderParticipants(participants, currentIndex, absent) {
   }).join("");
 
   // Clic en la fila → saltar a esa persona
+  // Usamos pointerdown en lugar de click porque updateUI() re-renderiza la
+  // lista cada 200ms: el elemento puede destruirse entre mousedown y mouseup,
+  // impidiendo que el navegador dispare el evento click.
   container.querySelectorAll(".participant-item").forEach(el => {
-    el.addEventListener("click", async e => {
+    el.addEventListener("pointerdown", async e => {
       if (e.target.classList.contains("btn-absent")) return;
       resetLocalFlags();
       await send("JUMP_TO", { index: parseInt(el.dataset.index, 10) });
@@ -111,7 +114,7 @@ function renderParticipants(participants, currentIndex, absent) {
 
   // Clic en ✕/✓ → marcar/desmarcar ausente
   container.querySelectorAll(".btn-absent").forEach(btn => {
-    btn.addEventListener("click", async e => {
+    btn.addEventListener("pointerdown", async e => {
       e.stopPropagation();
       resetLocalFlags();
       await send("TOGGLE_ABSENT", { index: parseInt(btn.dataset.index, 10) });
