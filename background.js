@@ -198,68 +198,94 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               return !t || t.length < 2 || t.length > 60 || NOISE.has(t) || /^\d+$/.test(t);
             }
 
-            // Calcular el borde derecho de la barra lateral
-            // La sidebar de Notion ocupa los primeros ~200px del viewport.
-            // Usamos el cover/banner de la página como referencia del inicio del contenido.
-            const sidebarRight = (() => {
-              const covers = document.querySelectorAll("img, div");
-              for (const el of covers) {
-                const r = el.getBoundingClientRect();
-                if (r.top < 10 && r.left > 100 && r.width > 300) return r.left;
-              }
-              return 200;
-            })();
+            // La sidebar de Notion ocupa ~230px fijos. No la detectamos
+            // dinámicamente porque el cálculo previo podía devolver un valor
+            // enorme (p.ej. el contenedor del board) y excluía columnas.
+            const SIDEBAR_RIGHT = 230;
 
-            // Recoger todos los avatares visibles dentro del área de contenido
-            // (tanto img de foto como divs cuadrados con inicial)
-            const avatars = [];
-
-            document.querySelectorAll("img").forEach(img => {
-              const r = img.getBoundingClientRect();
-              if (r.width < 10 || r.width > 42 || r.height < 10 || r.height > 42) return;
-              if (r.left < sidebarRight || r.top < 50 || r.top > window.innerHeight) return;
-              avatars.push({ el: img, r });
-            });
-
-            // Divs con inicial (usuarios sin foto de perfil)
-            document.querySelectorAll("div, span").forEach(el => {
+            // ── ESTRATEGIA PRINCIPAL: escaneo de nodos de texto ──────────────
+            // Buscamos todos los textos visibles a la derecha de la sidebar,
+            // los agrupamos por franja Y (30px) y la franja más alta con ≥ 3
+            // textos distintos repartidos a lo ancho = fila de cabeceras.
+            const textItems = [];
+            const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+            let tn;
+            while ((tn = tw.nextNode())) {
+              const t = clean(tn.textContent);
+              if (isNoise(t)) continue;
+              const el = tn.parentElement;
+              if (!el) continue;
               const r = el.getBoundingClientRect();
-              if (r.width < 20 || r.width > 42 || Math.abs(r.width - r.height) > 6) return;
-              if (r.left < sidebarRight || r.top < 50 || r.top > window.innerHeight) return;
-              const txt = el.textContent.trim();
-              if (txt.length === 1 && /[A-ZÁÉÍÓÚÜÑ]/i.test(txt)) {
-                avatars.push({ el, r, initial: txt });
-              }
+              // Descartar elementos invisibles (virtual scroll, display:none, etc.)
+              if (r.width < 4 || r.height < 4) continue;
+              if (r.left < SIDEBAR_RIGHT || r.top < 55) continue;
+              textItems.push({ t, x: r.left, y: r.top });
+            }
+
+            // Agrupar en franjas Y de 30px
+            const yBuckets = new Map();
+            textItems.forEach(it => {
+              const key = Math.round(it.y / 30) * 30;
+              if (!yBuckets.has(key)) yBuckets.set(key, []);
+              yBuckets.get(key).push(it);
             });
 
-            // Agrupar por franja Y (cada 20px) → la franja con más avatares
-            // es la fila de cabeceras de columna del board
-            const buckets = new Map();
-            avatars.forEach(av => {
-              const key = Math.round(av.r.top / 20) * 20;
-              if (!buckets.has(key)) buckets.set(key, []);
-              buckets.get(key).push(av);
-            });
+            // Ordenar franjas de arriba a abajo; elegir la primera con ≥ 3
+            // textos distintos distribuidos a lo largo del eje X (> 200px)
+            const sortedBands = [...yBuckets.entries()].sort((a, b) => a[0] - b[0]);
+            let headerItems = null;
+            for (const [, items] of sortedBands) {
+              const distinct = [...new Map(items.map(i => [i.t, i])).values()];
+              if (distinct.length < 3) continue;
+              const xs = distinct.map(i => i.x);
+              if (Math.max(...xs) - Math.min(...xs) < 150) continue;
+              headerItems = distinct;
+              break;
+            }
 
-            const headerRow = [...buckets.values()]
-              .filter(g => g.length >= 2)
-              .sort((a, b) => b.length - a.length)[0] || [];
+            if (headerItems) {
+              return headerItems
+                .sort((a, b) => a.x - b.x)
+                .map(i => i.t);
+            }
 
-            // Ordenar izquierda → derecha (orden visual del board)
-            headerRow.sort((a, b) => a.r.left - b.r.left);
-
+            // ── FALLBACK: avatares agrupados por Y ────────────────────────────
+            const seen    = new Set();
             const results = [];
-            const seen   = new Set();
 
             function add(raw, x) {
               const t = clean(raw);
               if (isNoise(t) || seen.has(t)) return;
-              seen.add(t);
-              results.push({ name: t, x: x || 0 });
+              seen.add(t); results.push({ name: t, x: x || 0 });
             }
 
+            const avatars = [];
+            document.querySelectorAll("img").forEach(img => {
+              const r = img.getBoundingClientRect();
+              if (r.width < 10 || r.width > 42 || r.height < 10 || r.height > 42) return;
+              if (r.left < SIDEBAR_RIGHT || r.top < 50) return;
+              avatars.push({ el: img, r });
+            });
+            document.querySelectorAll("div, span").forEach(el => {
+              const r = el.getBoundingClientRect();
+              if (r.width < 18 || r.width > 44 || Math.abs(r.width - r.height) > 8) return;
+              if (r.left < SIDEBAR_RIGHT || r.top < 50) return;
+              const txt = el.textContent.trim();
+              if (txt.length <= 2 && /^[A-ZÁÉÍÓÚÜÑ]/i.test(txt)) avatars.push({ el, r });
+            });
+
+            const avBuckets = new Map();
+            avatars.forEach(av => {
+              const key = Math.round(av.r.top / 30) * 30;
+              if (!avBuckets.has(key)) avBuckets.set(key, []);
+              avBuckets.get(key).push(av);
+            });
+            const headerRow = [...avBuckets.values()]
+              .filter(g => g.length >= 2)
+              .sort((a, b) => b.length - a.length)[0] || [];
+            headerRow.sort((a, b) => a.r.left - b.r.left);
+
             headerRow.forEach(av => {
-              // Intento 1: aria-label / alt en imágenes de foto
               if (av.el.tagName === "IMG") {
                 const label = av.el.getAttribute("aria-label") ||
                               av.el.getAttribute("alt") ||
@@ -268,8 +294,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                   add(label, av.r.left); return;
                 }
               }
-
-              // Intento 2: subir en el DOM leyendo el primer nodo de texto directo
               let el = av.el.parentElement;
               for (let i = 0; i < 8 && el; i++, el = el.parentElement) {
                 for (const child of el.childNodes) {
@@ -278,32 +302,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                     if (!isNoise(t)) { add(t, av.r.left); return; }
                   }
                 }
-                // Primera línea del innerText del contenedor
                 const line = clean((el.innerText || "").split("\n")[0]);
                 if (!isNoise(line) && line.length < 45) { add(line, av.r.left); return; }
               }
             });
 
-            // Fallback: role="columnheader" (si Notion lo implementa)
+            // Fallback final: role="columnheader"
             if (results.length === 0) {
               document.querySelectorAll('[role="columnheader"]').forEach(el => {
                 const r = el.getBoundingClientRect();
-                if (r.left >= sidebarRight) add(el.textContent, r.left);
+                if (r.left >= SIDEBAR_RIGHT) add(el.textContent, r.left);
               });
             }
 
-            // Fallback: vista tabla (filas con 2+ celdas)
-            if (results.length === 0) {
-              document.querySelectorAll('[role="row"]').forEach(row => {
-                const cells = row.querySelectorAll('[role="gridcell"]');
-                if (cells.length >= 2) {
-                  const r = cells[0].getBoundingClientRect();
-                  if (r.left >= sidebarRight) add(cells[0].textContent, r.left);
-                }
-              });
-            }
-
-            // Ordenar por posición X y devolver solo los nombres
             return results.sort((a, b) => a.x - b.x).map(r => r.name);
           }
 
