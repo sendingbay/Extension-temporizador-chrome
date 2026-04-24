@@ -170,25 +170,148 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
 
         case "FETCH_FROM_DOM": {
-          // Busca una pestaña de Notion abierta (la activa primero, luego cualquiera)
           const allTabs = await chrome.tabs.query({ url: "https://www.notion.so/*" });
           if (allTabs.length === 0) {
             throw new Error("No hay ninguna pestaña de Notion abierta. Abre tu base de datos en Notion primero.");
           }
-          // Preferir la pestaña activa de la ventana actual
           const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true, url: "https://www.notion.so/*" });
           const tab = activeTabs[0] || allTabs[0];
 
-          let response;
-          try {
-            response = await chrome.tabs.sendMessage(tab.id, { type: "GET_DOM_PARTICIPANTS" });
-          } catch (_) {
-            throw new Error("No se pudo comunicar con la pestaña de Notion. Recarga la página de Notion e inténtalo de nuevo.");
+          // Función autocontenida que se inyecta y ejecuta directamente en la pestaña
+          function notionScraper() {
+            const NOISE = new Set([
+              "New", "Filter", "Sort", "Search", "Group", "Properties",
+              "Share", "Export", "Add a page", "Calculate", "Untitled",
+              "No assignee", "Empty", "Count", "Open", "Delete", "Duplicate",
+              "Skip to content", "···", "...", "Sin título", "Ir al contenido",
+              "Sin asignar", "Vacío", "Nueva página", "+ Nueva página",
+              "Nuevo", "Abrir", "Eliminar", "Filtrar", "Ordenar", "Agrupar",
+              "Propiedades", "Compartir", "Añadir una página", "Calcular",
+              "Todo", "Backlog", "Mis Tareas", "Involucrado", "Canva Activo",
+              "Por Usuarios", "Canva / Sprints",
+            ]);
+
+            function clean(t) {
+              return (t || "").replace(/\s+/g, " ").trim().replace(/\s+\d+\s*$/, "").trim();
+            }
+
+            function isNoise(t) {
+              return !t || t.length < 2 || t.length > 60 || NOISE.has(t) || /^\d+$/.test(t);
+            }
+
+            function isInScroller(el) {
+              let p = el.parentElement;
+              while (p && p !== document.body) {
+                const s = window.getComputedStyle(p);
+                const oy = s.overflowY;
+                const ox = s.overflowX;
+                if (oy === "auto" || oy === "scroll" || ox === "auto" || ox === "scroll") return true;
+                p = p.parentElement;
+              }
+              return false;
+            }
+
+            const results = [];
+            const seen = new Set();
+
+            function add(raw) {
+              const t = clean(raw);
+              if (isNoise(t) || seen.has(t)) return;
+              seen.add(t);
+              results.push(t);
+            }
+
+            // Estrategia 1: role="columnheader" (tablero)
+            document.querySelectorAll('[role="columnheader"]')
+              .forEach(el => add(el.textContent));
+
+            // Estrategia 2: Cabeceras de columna fuera de scroll containers
+            // Los títulos de columna del board NO están dentro de un scroller;
+            // las tarjetas sí. Buscamos imágenes pequeñas (avatares) que no
+            // están en zonas de scroll y leemos el texto del contenedor más próximo.
+            if (results.length === 0) {
+              document.querySelectorAll("img").forEach(img => {
+                if (isInScroller(img)) return;
+                const rect = img.getBoundingClientRect();
+                if (rect.width < 8 || rect.width > 48 || rect.height > 48) return;
+                // Subir hasta encontrar el contenedor del header de columna
+                let el = img.parentElement;
+                for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
+                  const text = el.textContent || "";
+                  const line = clean(text.split("\n")[0]);
+                  if (!isNoise(line) && line.length <= 50) {
+                    add(line);
+                    break;
+                  }
+                }
+              });
+            }
+
+            // Estrategia 3: Buscar todos los elementos de texto corto
+            // que NO estén dentro de scroll containers (column headers del board)
+            if (results.length === 0) {
+              const walker = document.createTreeWalker(
+                document.body, NodeFilter.SHOW_TEXT,
+                { acceptNode: n => n.textContent.trim().length > 1 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT }
+              );
+              const byParent = new Map();
+              let node;
+              while ((node = walker.nextNode())) {
+                const el = node.parentElement;
+                if (!el || isInScroller(el)) continue;
+                const t = clean(node.textContent);
+                if (isNoise(t)) continue;
+                const parent = el.parentElement || el;
+                if (!byParent.has(parent)) byParent.set(parent, []);
+                byParent.get(parent).push(t);
+              }
+              // Grupos de 3+ hermanos (cabeceras de columna del tablero)
+              byParent.forEach((texts, parent) => {
+                const siblings = parent.children.length;
+                if (texts.length >= 3 && siblings >= 3) {
+                  texts.forEach(t => add(t));
+                }
+              });
+            }
+
+            // Estrategia 4: Vista tabla — filas con 2+ celdas
+            if (results.length === 0) {
+              document.querySelectorAll('[role="row"]').forEach(row => {
+                const cells = row.querySelectorAll('[role="gridcell"]');
+                if (cells.length >= 2) add(cells[0].textContent);
+              });
+            }
+
+            // Estrategia 5: Vista lista/galería
+            if (results.length === 0) {
+              document.querySelectorAll('[role="link"]').forEach(el => {
+                const first = el.firstElementChild;
+                add(first ? first.textContent : el.textContent);
+              });
+            }
+
+            return results;
           }
 
-          const names = response?.names || [];
+          let names = [];
+          try {
+            const injected = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func:   notionScraper,
+            });
+            names = injected[0]?.result || [];
+          } catch (e) {
+            // Fallback: mensaje al content script ya inyectado
+            try {
+              const resp = await chrome.tabs.sendMessage(tab.id, { type: "GET_DOM_PARTICIPANTS" });
+              names = resp?.names || [];
+            } catch (_) {
+              throw new Error("No se pudo acceder a la pestaña de Notion. Recarga la página de Notion e inténtalo de nuevo.");
+            }
+          }
+
           if (names.length === 0) {
-            throw new Error("No se encontraron nombres. Asegúrate de que la base de datos esté abierta en vista tabla o tablero, y que tenga entradas visibles.");
+            throw new Error("No se encontraron nombres. Asegúrate de que la vista \"Por Usuarios\" esté completamente cargada y visible, luego pulsa de nuevo.");
           }
 
           const participants = names.map(name => ({ name, taskCount: 1 }));
