@@ -285,23 +285,57 @@ function injectTimerUI() {
   item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
   item.addEventListener("click", () => togglePanel());
 
-  // Posición: justo debajo de "Eeb eComm - Encuestas"
-  const TARGET_LABEL = "Eeb eComm - Encuestas";
-  const allSidebarItems = Array.from(sidebar.querySelectorAll("*"));
-  const anchor = allSidebarItems.find(
-    el => el.children.length === 0 && el.textContent.trim() === TARGET_LABEL
-  );
-  const anchorRow = anchor
-    ? anchor.closest("[data-block-id], [role='treeitem'], div[style]") || anchor.parentElement
-    : null;
+  // Posición: intentar colocar debajo de "Todo" dentro del bloque Jira.
+  // Estrategia 1 — dentro del desplegable: buscar el nodo de texto "Todo"
+  //   que esté descendiente de un bloque que también contenga "Jira".
+  // Estrategia 2 — fallback externo: justo debajo del ítem "Jira" del sidebar.
+  // Estrategia 3 — fallback final: penúltimo hijo del sidebar.
 
-  if (anchorRow && anchorRow.parentElement === sidebar) {
-    anchorRow.insertAdjacentElement("afterend", item);
-  } else if (anchorRow) {
-    let node = anchorRow;
+  function findTextNode(labelText) {
+    return Array.from(sidebar.querySelectorAll("*")).find(
+      el => el.children.length === 0 && el.textContent.trim() === labelText
+    );
+  }
+
+  function rootInSidebar(el) {
+    // Sube hasta encontrar un hijo directo del sidebar
+    let node = el;
     while (node.parentElement && node.parentElement !== sidebar) node = node.parentElement;
-    node.insertAdjacentElement("afterend", item);
-  } else {
+    return node;
+  }
+
+  let inserted = false;
+
+  // Estrategia 1: buscar "Todo" dentro de un contenedor que también tenga "Jira"
+  const todoNode = findTextNode("Todo");
+  if (todoNode) {
+    // Verificar que haya un ancestro cercano que contenga "Jira"
+    let ancestor = todoNode.parentElement;
+    let jiraContext = false;
+    for (let i = 0; i < 10 && ancestor && ancestor !== sidebar; i++) {
+      if (ancestor.textContent.includes("Jira")) { jiraContext = true; break; }
+      ancestor = ancestor.parentElement;
+    }
+    if (jiraContext) {
+      // Subir al row de "Todo" (hijo directo del contenedor del desplegable Jira)
+      const todoRow = todoNode.closest("[data-block-id], [role='treeitem'], div[style]") || todoNode.parentElement;
+      todoRow.insertAdjacentElement("afterend", item);
+      inserted = true;
+    }
+  }
+
+  // Estrategia 2: fallback — justo después del ítem raíz "Jira" en el sidebar
+  if (!inserted) {
+    const jiraNode = findTextNode("Jira");
+    if (jiraNode) {
+      const jiraRoot = rootInSidebar(jiraNode);
+      jiraRoot.insertAdjacentElement("afterend", item);
+      inserted = true;
+    }
+  }
+
+  // Estrategia 3: penúltimo hijo del sidebar
+  if (!inserted) {
     const lastChild = sidebar.lastElementChild;
     if (lastChild) sidebar.insertBefore(item, lastChild);
     else sidebar.appendChild(item);
