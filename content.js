@@ -113,17 +113,52 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 // ==========================
-// ⏱ TIMER FLOTANTE — Notion
+// ⏱ PANEL DAILY — Notion
 // ==========================
 
-const TIMER_BUTTON_ID  = "daily-timer-btn";
-const TIMER_DISPLAY_ID = "daily-timer-display";
-const TIMER_DURATION   = 2 * 60; // 2 minutos en segundos
+const TIMER_BUTTON_ID = "daily-timer-btn";
+const PANEL_ID        = "daily-timer-panel";
 
-let timerInterval = null;
-let secondsLeft   = TIMER_DURATION;
+let panelVisible = false;
+let hasWarned    = false;
+let panelAudioCtx = null;
 
-// Devuelve el contenedor scrollable del sidebar de Notion
+// ── Audio ────────────────────────────────────────────────────
+function getPanelAudioCtx() {
+  if (!panelAudioCtx) panelAudioCtx = new AudioContext();
+  return panelAudioCtx;
+}
+function panelBeep(freq = 880, duration = 200, volume = 0.3) {
+  try {
+    const ctx  = getPanelAudioCtx();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration / 1000);
+  } catch (_) { /* audio no disponible */ }
+}
+
+// ── Comunicación con background.js ───────────────────────────
+function sendBg(type, data = {}) {
+  return new Promise(resolve =>
+    chrome.runtime.sendMessage({ type, ...data }, response => resolve(response))
+  );
+}
+
+// ── Escape HTML seguro ────────────────────────────────────────
+function escHtml(str) {
+  return (str || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ── Selector del sidebar de Notion ───────────────────────────
 function getNotionSidebar() {
   return (
     document.querySelector(".notion-sidebar-container .notion-scroller.vertical") ||
@@ -134,14 +169,92 @@ function getNotionSidebar() {
   );
 }
 
+// ── CSS del panel ─────────────────────────────────────────────
+const PANEL_CSS = `
+  #daily-timer-panel * { box-sizing: border-box; margin: 0; padding: 0; }
+  #dp-list .dp-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border-radius: 6px; cursor: pointer; transition: background .1s;
+  }
+  #dp-list .dp-item:hover  { background: rgba(255,255,255,.06); }
+  #dp-list .dp-item.active { background: rgba(0,82,204,.15); }
+  #dp-list .dp-item.done   { opacity: .45; }
+  #dp-list .dp-item.absent { opacity: .3; text-decoration: line-through; }
+  #dp-list .dp-avatar {
+    width: 26px; height: 26px; border-radius: 50%; background: #0052cc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  #dp-list .dp-pname  { flex: 1; font-size: 13px; color: #ddd; }
+  #dp-list .dp-ptasks { font-size: 11px; color: #4da6ff; }
+  #dp-list .dp-absent-btn {
+    background: none; border: none; color: #555; cursor: pointer;
+    font-size: 12px; padding: 2px 5px; border-radius: 4px;
+  }
+  #dp-list .dp-absent-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+  #dp-timer-wrap.warning  #dp-timer { color: #ff5630 !important; animation: dp-pulse .5s ease-in-out infinite alternate; }
+  #dp-timer-wrap.finished #dp-timer { color: #36b37e !important; animation: none; }
+  @keyframes dp-pulse { from { opacity: 1; } to { opacity: .45; } }
+`;
+
+function injectPanelCSS() {
+  if (document.getElementById("daily-panel-css")) return;
+  const style = document.createElement("style");
+  style.id = "daily-panel-css";
+  style.textContent = PANEL_CSS;
+  document.head.appendChild(style);
+}
+
+// ── Construcción del HTML del panel ──────────────────────────
+function buildPanelHTML() {
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 14px;background:#16213e;border-bottom:1px solid #0f3460;">
+      <span style="font-size:13px;font-weight:600;color:#4da6ff;letter-spacing:.5px;">⏱ Daily Timer</span>
+      <button id="dp-close" style="background:none;border:none;color:#888;cursor:pointer;
+              font-size:16px;padding:2px 6px;border-radius:4px;" title="Cerrar">✕</button>
+    </div>
+    <div style="padding:14px 14px 6px;text-align:center;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:4px;">En turno</div>
+      <div id="dp-name"    style="font-size:20px;font-weight:700;color:#fff;">—</div>
+      <div id="dp-tasks"   style="font-size:12px;color:#4da6ff;margin-top:2px;"></div>
+      <div id="dp-counter" style="font-size:11px;color:#555;margin-top:2px;"></div>
+    </div>
+    <div id="dp-timer-wrap" style="text-align:center;padding:4px 14px 10px;">
+      <div id="dp-timer" style="font-size:56px;font-weight:700;letter-spacing:-2px;
+           color:#fff;font-family:'Courier New',monospace;line-height:1;transition:color .3s;">
+        2:00
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;padding:0 14px 10px;">
+      <button id="dp-play"  style="flex:2;padding:9px;border:none;border-radius:8px;
+              background:#0052cc;color:#fff;cursor:pointer;font-size:20px;">▶</button>
+      <button id="dp-reset" style="flex:1;padding:9px;border:none;border-radius:8px;
+              background:#252540;color:#aaa;cursor:pointer;font-size:18px;" title="Reiniciar">↺</button>
+      <button id="dp-next"  style="flex:1;padding:9px;border:none;border-radius:8px;
+              background:#252540;color:#aaa;cursor:pointer;font-size:18px;" title="Siguiente">→</button>
+    </div>
+    <div id="dp-status" style="text-align:center;font-size:12px;color:#888;
+         padding:0 14px 6px;min-height:18px;"></div>
+    <div style="height:1px;background:#0f3460;margin:0 14px;"></div>
+    <div style="display:flex;gap:6px;padding:8px 14px;">
+      <button id="dp-fetch-dom" style="flex:1;padding:7px 4px;border:none;border-radius:6px;
+              background:#252540;color:#ccc;cursor:pointer;font-size:12px;">📄 Desde página</button>
+      <button id="dp-fetch-api" style="flex:1;padding:7px 4px;border:none;border-radius:6px;
+              background:#252540;color:#ccc;cursor:pointer;font-size:12px;">↻ API</button>
+    </div>
+    <div id="dp-list" style="max-height:180px;overflow-y:auto;padding:0 14px 12px;"></div>
+  `;
+}
+
+// ── Inyección del ítem del sidebar + panel ────────────────────
 function injectTimerUI() {
-  // Evitar duplicados
   if (document.getElementById(TIMER_BUTTON_ID)) return;
 
   const sidebar = getNotionSidebar();
-  if (!sidebar) return; // Se reintentará desde el MutationObserver
+  if (!sidebar) return;
 
-  // --- Ítem del sidebar (estilo nativo de Notion) ---
+  // Ítem del sidebar (estilo nativo Notion)
   const item = document.createElement("div");
   item.id = TIMER_BUTTON_ID;
   Object.assign(item.style, {
@@ -164,155 +277,241 @@ function injectTimerUI() {
   icon.style.fontSize = "16px";
 
   const label = document.createElement("span");
-  label.id = "daily-timer-label";
-  label.textContent = "Iniciar Daily";
+  label.textContent = "Daily Timer";
 
   item.appendChild(icon);
   item.appendChild(label);
+  item.addEventListener("mouseenter", () => { item.style.background = "rgba(55,53,47,0.08)"; });
+  item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+  item.addEventListener("click", () => togglePanel());
 
-  item.addEventListener("mouseenter", () => {
-    item.style.background = "rgba(55, 53, 47, 0.08)";
-  });
-  item.addEventListener("mouseleave", () => {
-    item.style.background = "transparent";
-  });
-  item.addEventListener("click", onTimerButtonClick);
-
-  // Insertar justo después del ítem "Eeb eComm - Encuestas" del sidebar.
-  // Se busca el elemento que contenga ese texto exacto; si no se encuentra,
-  // cae al penúltimo hijo como fallback.
+  // Posición: justo debajo de "Eeb eComm - Encuestas"
   const TARGET_LABEL = "Eeb eComm - Encuestas";
   const allSidebarItems = Array.from(sidebar.querySelectorAll("*"));
   const anchor = allSidebarItems.find(
     el => el.children.length === 0 && el.textContent.trim() === TARGET_LABEL
   );
-  const anchorRow = anchor ? anchor.closest("[data-block-id], [role='treeitem'], div[style]") || anchor.parentElement : null;
+  const anchorRow = anchor
+    ? anchor.closest("[data-block-id], [role='treeitem'], div[style]") || anchor.parentElement
+    : null;
 
   if (anchorRow && anchorRow.parentElement === sidebar) {
-    // Insertar justo después del elemento ancla
     anchorRow.insertAdjacentElement("afterend", item);
   } else if (anchorRow) {
-    // Si el ancla está dentro de un contenedor anidado, insertar después de ese contenedor
     let node = anchorRow;
-    while (node.parentElement && node.parentElement !== sidebar) {
-      node = node.parentElement;
-    }
+    while (node.parentElement && node.parentElement !== sidebar) node = node.parentElement;
     node.insertAdjacentElement("afterend", item);
   } else {
-    // Fallback: penúltimo hijo del sidebar
     const lastChild = sidebar.lastElementChild;
-    if (lastChild) {
-      sidebar.insertBefore(item, lastChild);
-    } else {
-      sidebar.appendChild(item);
-    }
+    if (lastChild) sidebar.insertBefore(item, lastChild);
+    else sidebar.appendChild(item);
   }
 
-  // --- Panel de cuenta regresiva (overlay flotante sobre el contenido) ---
-  const display = document.createElement("div");
-  display.id = TIMER_DISPLAY_ID;
-  Object.assign(display.style, {
-    position:      "fixed",
-    bottom:        "24px",
-    left:          "50%",
-    transform:     "translateX(-50%)",
-    zIndex:        "99999",
-    padding:       "14px 28px",
-    background:    "#1e1e1e",
-    color:         "#fff",
-    borderRadius:  "14px",
-    fontSize:      "36px",
-    fontWeight:    "700",
-    fontFamily:    "ui-monospace, monospace",
-    boxShadow:     "0 6px 24px rgba(0,0,0,0.45)",
-    display:       "none",
-    minWidth:      "130px",
-    textAlign:     "center",
-    letterSpacing: "3px",
-    transition:    "background 0.4s",
+  // Panel flotante junto al sidebar
+  const panel = document.createElement("div");
+  panel.id = PANEL_ID;
+  panel.innerHTML = buildPanelHTML();
+  Object.assign(panel.style, {
+    position:     "fixed",
+    bottom:       "24px",
+    left:         "240px",
+    zIndex:       "99999",
+    width:        "320px",
+    background:   "#1a1a2e",
+    color:        "#e0e0e0",
+    borderRadius: "12px",
+    boxShadow:    "0 8px 32px rgba(0,0,0,0.55)",
+    fontFamily:   "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    fontSize:     "14px",
+    display:      "none",
+    overflow:     "hidden",
   });
 
-  document.body.appendChild(display);
+  document.body.appendChild(panel);
+  injectPanelCSS();
+  bindPanelEvents();
+  setInterval(updatePanel, 200);
 }
 
-function onTimerButtonClick() {
-  if (timerInterval) {
-    stopTimer();
-  } else {
-    startTimer();
-  }
-}
+// ── Eventos del panel ─────────────────────────────────────────
+function bindPanelEvents() {
+  document.getElementById("dp-close").addEventListener("click", () => togglePanel(false));
 
-function startTimer() {
-  secondsLeft = TIMER_DURATION;
+  document.getElementById("dp-play").addEventListener("click", async () => {
+    if (panelAudioCtx?.state === "suspended") panelAudioCtx.resume();
+    await sendBg("START_PAUSE");
+  });
 
-  const btn     = document.getElementById(TIMER_BUTTON_ID);
-  const display = document.getElementById(TIMER_DISPLAY_ID);
+  document.getElementById("dp-reset").addEventListener("click", async () => {
+    hasWarned = false;
+    await sendBg("RESET_TIMER");
+  });
 
-  const label  = document.getElementById("daily-timer-label");
-  if (label)   label.textContent       = "⏹ Detener";
-  if (display) display.style.display   = "block";
+  document.getElementById("dp-next").addEventListener("click", async () => {
+    hasWarned = false;
+    await sendBg("NEXT_PERSON");
+  });
 
-  // Leer tareas/texto visible del DOM y mostrar en consola
-  logVisibleTasks();
-
-  updateDisplay();
-
-  timerInterval = setInterval(() => {
-    secondsLeft--;
-    updateDisplay();
-
-    if (secondsLeft <= 0) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-      onTimerEnd();
+  document.getElementById("dp-fetch-dom").addEventListener("click", async function () {
+    this.disabled = true;
+    this.textContent = "Leyendo…";
+    setDpStatus("Leyendo la página de Notion…");
+    const res = await sendBg("FETCH_FROM_DOM");
+    this.disabled = false;
+    this.textContent = "📄 Desde página";
+    if (res?.success) {
+      hasWarned = false;
+      const n = res.participants.length;
+      setDpStatus(`✓ ${n} participante${n !== 1 ? "s" : ""} cargado${n !== 1 ? "s" : ""}`, "success");
+      setTimeout(() => setDpStatus(""), 3000);
+    } else {
+      setDpStatus(res?.error || "Error al leer la página", "error");
     }
-  }, 1000);
-}
+  });
 
-function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  secondsLeft   = TIMER_DURATION;
-
-  const btn     = document.getElementById(TIMER_BUTTON_ID);
-  const display = document.getElementById(TIMER_DISPLAY_ID);
-
-  const label2  = document.getElementById("daily-timer-label");
-  if (label2)   label2.textContent    = "Iniciar Daily";
-  if (display)  display.style.display = "none";
-}
-
-function onTimerEnd() {
-  const display = document.getElementById(TIMER_DISPLAY_ID);
-  const btn     = document.getElementById(TIMER_BUTTON_ID);
-
-  if (display) {
-    display.textContent      = "✅ Listo";
-    display.style.background = "#0f9d58";
-  }
-  const label3 = document.getElementById("daily-timer-label");
-  if (label3) label3.textContent = "Iniciar Daily";
-
-  // Ocultar panel tras 3 segundos y restaurar color
-  setTimeout(() => {
-    if (display) {
-      display.style.display    = "none";
-      display.style.background = "#1e1e1e";
+  document.getElementById("dp-fetch-api").addEventListener("click", async function () {
+    this.disabled = true;
+    this.textContent = "Cargando…";
+    setDpStatus("Conectando con Notion…");
+    const res = await sendBg("FETCH_PARTICIPANTS");
+    this.disabled = false;
+    this.textContent = "↻ API";
+    if (res?.success) {
+      hasWarned = false;
+      const n = res.participants.length;
+      setDpStatus(`✓ ${n} participante${n !== 1 ? "s" : ""}`, "success");
+      setTimeout(() => setDpStatus(""), 3000);
+    } else {
+      setDpStatus(res?.error || "Error al conectar", "error");
     }
-  }, 3000);
+  });
 }
 
-function updateDisplay() {
-  const display = document.getElementById(TIMER_DISPLAY_ID);
-  if (!display) return;
+function setDpStatus(msg, type = "") {
+  const el = document.getElementById("dp-status");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === "error" ? "#ff5630" : type === "success" ? "#36b37e" : "#888";
+}
 
-  const m = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const s = String(secondsLeft % 60).padStart(2, "0");
-  display.textContent = `${m}:${s}`;
+function togglePanel(forceState) {
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel) return;
+  panelVisible = typeof forceState === "boolean" ? forceState : !panelVisible;
+  panel.style.display = panelVisible ? "block" : "none";
+}
 
-  // Alerta visual cuando quedan ≤ 30 segundos
-  display.style.background = secondsLeft <= 30 ? "#d93025" : "#1e1e1e";
+// ── Bucle de actualización (200 ms) ──────────────────────────
+async function updatePanel() {
+  if (!panelVisible) return;
+  const res   = await sendBg("GET_STATE");
+  const state = res?.timerState;
+  if (!state) return;
+
+  // Calcular tiempo restante
+  let remaining = state.duration - state.elapsed;
+  if (state.running && state.startTime) remaining -= (Date.now() - state.startTime);
+  remaining = Math.max(0, remaining);
+
+  const totalSecs = Math.ceil(remaining / 1000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+
+  const timerEl = document.getElementById("dp-timer");
+  const wrapEl  = document.getElementById("dp-timer-wrap");
+  if (timerEl) timerEl.textContent = `${mins}:${secs.toString().padStart(2, "0")}`;
+
+  if (wrapEl) {
+    const inProgress = state.running || state.elapsed > 0;
+    if (totalSecs === 0 && inProgress) {
+      wrapEl.classList.remove("warning"); wrapEl.classList.add("finished");
+    } else if (totalSecs <= 10 && totalSecs > 0 && inProgress) {
+      wrapEl.classList.add("warning"); wrapEl.classList.remove("finished");
+      if (!hasWarned) {
+        hasWarned = true;
+        panelBeep(880, 250);
+        setTimeout(() => panelBeep(880, 250), 350);
+      }
+    } else {
+      wrapEl.classList.remove("warning", "finished");
+    }
+  }
+
+  if (state.elapsed === 0 && !state.running) hasWarned = false;
+
+  const playBtn = document.getElementById("dp-play");
+  if (playBtn) playBtn.textContent = state.running ? "⏸" : "▶";
+
+  const participants = state.participants || [];
+  const absent       = state.absent || [];
+  const current      = participants[state.currentIndex] || null;
+
+  const nameEl = document.getElementById("dp-name");
+  if (nameEl) nameEl.textContent = current ? current.name : "—";
+
+  const tasksEl = document.getElementById("dp-tasks");
+  if (tasksEl) tasksEl.textContent = current
+    ? `${current.taskCount} tarea${current.taskCount !== 1 ? "s" : ""}` : "";
+
+  const activeTotal = participants.filter((_, i) => !absent.includes(i)).length;
+  const activeDone  = participants.filter((_, i) => !absent.includes(i) && i < state.currentIndex).length;
+  const counterEl   = document.getElementById("dp-counter");
+  if (counterEl && participants.length > 0) {
+    const absentCount = absent.length;
+    let txt = `${activeDone + 1} de ${activeTotal}`;
+    if (absentCount > 0) txt += ` · ${absentCount} ausente${absentCount !== 1 ? "s" : ""}`;
+    counterEl.textContent = txt;
+  }
+
+  renderParticipantList(participants, state.currentIndex, absent);
+}
+
+// ── Lista de participantes ────────────────────────────────────
+function renderParticipantList(participants, currentIndex, absent) {
+  const container = document.getElementById("dp-list");
+  if (!container) return;
+
+  if (!participants || participants.length === 0) {
+    container.innerHTML =
+      '<div style="color:#555;font-size:12px;text-align:center;padding:8px 0;">' +
+      'Carga los participantes con los botones de arriba.</div>';
+    return;
+  }
+
+  container.innerHTML = participants.map((p, i) => {
+    const isAbsent = absent.includes(i);
+    const cls = [
+      "dp-item",
+      i === currentIndex && !isAbsent ? "active" : "",
+      i < currentIndex  && !isAbsent ? "done"   : "",
+      isAbsent ? "absent" : "",
+    ].filter(Boolean).join(" ");
+    const absentTitle = isAbsent ? "Marcar presente" : "Marcar ausente";
+    const absentIcon  = isAbsent ? "✓" : "✕";
+    return `
+      <div class="${cls}" data-index="${i}">
+        <div class="dp-avatar">${escHtml(p.name.charAt(0).toUpperCase())}</div>
+        <span class="dp-pname">${escHtml(p.name)}</span>
+        <span class="dp-ptasks">${p.taskCount} t.</span>
+        <button class="dp-absent-btn" data-index="${i}" title="${absentTitle}">${absentIcon}</button>
+      </div>`;
+  }).join("");
+
+  container.querySelectorAll(".dp-item").forEach(el => {
+    el.addEventListener("pointerdown", async e => {
+      if (e.target.classList.contains("dp-absent-btn")) return;
+      hasWarned = false;
+      await sendBg("JUMP_TO", { index: parseInt(el.dataset.index, 10) });
+    });
+  });
+
+  container.querySelectorAll(".dp-absent-btn").forEach(btn => {
+    btn.addEventListener("pointerdown", async e => {
+      e.stopPropagation();
+      hasWarned = false;
+      await sendBg("TOGGLE_ABSENT", { index: parseInt(btn.dataset.index, 10) });
+    });
+  });
 }
 
 function logVisibleTasks() {
@@ -328,24 +527,20 @@ function logVisibleTasks() {
 
 // ── Inyección con MutationObserver (Notion carga dinámicamente) ──
 function waitForNotionAndInject() {
-  // Intentar inmediatamente si el sidebar ya está en el DOM
   if (getNotionSidebar()) {
     injectTimerUI();
     return;
   }
-
-  // Notion monta el sidebar de forma asíncrona; observar hasta que aparezca
   const observer = new MutationObserver((_mutations, obs) => {
     if (getNotionSidebar()) {
       obs.disconnect();
       injectTimerUI();
     }
   });
-
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// Doble verificación en runtime: solo ejecutar dentro de notion.so
+// Solo ejecutar dentro de notion.so
 if (location.hostname.endsWith("notion.so")) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", waitForNotionAndInject);
