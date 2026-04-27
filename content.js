@@ -123,60 +123,94 @@ const TIMER_DURATION   = 2 * 60; // 2 minutos en segundos
 let timerInterval = null;
 let secondsLeft   = TIMER_DURATION;
 
+// Devuelve el contenedor scrollable del sidebar de Notion
+function getNotionSidebar() {
+  return (
+    document.querySelector(".notion-sidebar-container .notion-scroller.vertical") ||
+    document.querySelector(".notion-sidebar .notion-scroller.vertical") ||
+    document.querySelector(".notion-sidebar-container") ||
+    document.querySelector(".notion-sidebar") ||
+    null
+  );
+}
+
 function injectTimerUI() {
   // Evitar duplicados
   if (document.getElementById(TIMER_BUTTON_ID)) return;
 
-  // --- Botón flotante ---
-  const btn = document.createElement("button");
-  btn.id = TIMER_BUTTON_ID;
-  btn.textContent = "⏱ Iniciar Daily";
-  Object.assign(btn.style, {
-    position:    "fixed",
-    bottom:      "24px",
-    right:       "24px",
-    zIndex:      "99999",
-    padding:     "10px 16px",
-    background:  "#2eaadc",
-    color:       "#fff",
-    border:      "none",
-    borderRadius:"8px",
-    fontSize:    "14px",
-    fontWeight:  "600",
-    cursor:      "pointer",
-    boxShadow:   "0 4px 12px rgba(0,0,0,0.25)",
-    fontFamily:  "ui-sans-serif, system-ui, sans-serif",
-    transition:  "background 0.2s",
-    userSelect:  "none",
+  const sidebar = getNotionSidebar();
+  if (!sidebar) return; // Se reintentará desde el MutationObserver
+
+  // --- Ítem del sidebar (estilo nativo de Notion) ---
+  const item = document.createElement("div");
+  item.id = TIMER_BUTTON_ID;
+  Object.assign(item.style, {
+    display:      "flex",
+    alignItems:   "center",
+    gap:          "8px",
+    padding:      "6px 12px",
+    margin:       "2px 4px",
+    borderRadius: "6px",
+    cursor:       "pointer",
+    fontSize:     "14px",
+    fontWeight:   "500",
+    color:        "inherit",
+    userSelect:   "none",
+    transition:   "background 0.1s",
   });
 
-  // --- Panel de cuenta regresiva ---
+  const icon = document.createElement("span");
+  icon.textContent = "⏱";
+  icon.style.fontSize = "16px";
+
+  const label = document.createElement("span");
+  label.id = "daily-timer-label";
+  label.textContent = "Iniciar Daily";
+
+  item.appendChild(icon);
+  item.appendChild(label);
+
+  item.addEventListener("mouseenter", () => {
+    item.style.background = "rgba(55, 53, 47, 0.08)";
+  });
+  item.addEventListener("mouseleave", () => {
+    item.style.background = "transparent";
+  });
+  item.addEventListener("click", onTimerButtonClick);
+
+  // Insertar antes del último hijo para quedar cerca del fondo pero no al final del todo
+  const lastChild = sidebar.lastElementChild;
+  if (lastChild) {
+    sidebar.insertBefore(item, lastChild);
+  } else {
+    sidebar.appendChild(item);
+  }
+
+  // --- Panel de cuenta regresiva (overlay flotante sobre el contenido) ---
   const display = document.createElement("div");
   display.id = TIMER_DISPLAY_ID;
   Object.assign(display.style, {
     position:      "fixed",
-    bottom:        "74px",
-    right:         "24px",
+    bottom:        "24px",
+    left:          "50%",
+    transform:     "translateX(-50%)",
     zIndex:        "99999",
-    padding:       "12px 20px",
+    padding:       "14px 28px",
     background:    "#1e1e1e",
     color:         "#fff",
-    borderRadius:  "12px",
-    fontSize:      "28px",
+    borderRadius:  "14px",
+    fontSize:      "36px",
     fontWeight:    "700",
     fontFamily:    "ui-monospace, monospace",
-    boxShadow:     "0 4px 16px rgba(0,0,0,0.4)",
+    boxShadow:     "0 6px 24px rgba(0,0,0,0.45)",
     display:       "none",
-    minWidth:      "110px",
+    minWidth:      "130px",
     textAlign:     "center",
-    letterSpacing: "2px",
+    letterSpacing: "3px",
     transition:    "background 0.4s",
   });
 
-  btn.addEventListener("click", onTimerButtonClick);
-
   document.body.appendChild(display);
-  document.body.appendChild(btn);
 }
 
 function onTimerButtonClick() {
@@ -193,8 +227,9 @@ function startTimer() {
   const btn     = document.getElementById(TIMER_BUTTON_ID);
   const display = document.getElementById(TIMER_DISPLAY_ID);
 
-  if (btn)     btn.textContent        = "⏹ Detener";
-  if (display) display.style.display  = "block";
+  const label  = document.getElementById("daily-timer-label");
+  if (label)   label.textContent       = "⏹ Detener";
+  if (display) display.style.display   = "block";
 
   // Leer tareas/texto visible del DOM y mostrar en consola
   logVisibleTasks();
@@ -221,8 +256,9 @@ function stopTimer() {
   const btn     = document.getElementById(TIMER_BUTTON_ID);
   const display = document.getElementById(TIMER_DISPLAY_ID);
 
-  if (btn)     btn.textContent       = "⏱ Iniciar Daily";
-  if (display) display.style.display = "none";
+  const label2  = document.getElementById("daily-timer-label");
+  if (label2)   label2.textContent    = "Iniciar Daily";
+  if (display)  display.style.display = "none";
 }
 
 function onTimerEnd() {
@@ -233,7 +269,8 @@ function onTimerEnd() {
     display.textContent      = "✅ Listo";
     display.style.background = "#0f9d58";
   }
-  if (btn) btn.textContent = "⏱ Iniciar Daily";
+  const label3 = document.getElementById("daily-timer-label");
+  if (label3) label3.textContent = "Iniciar Daily";
 
   // Ocultar panel tras 3 segundos y restaurar color
   setTimeout(() => {
@@ -269,14 +306,15 @@ function logVisibleTasks() {
 
 // ── Inyección con MutationObserver (Notion carga dinámicamente) ──
 function waitForNotionAndInject() {
-  // Notion monta su árbol de forma asíncrona; intentar primero de inmediato.
-  if (document.querySelector(".notion-app-inner, .notion-frame, #notion-app")) {
+  // Intentar inmediatamente si el sidebar ya está en el DOM
+  if (getNotionSidebar()) {
     injectTimerUI();
     return;
   }
 
+  // Notion monta el sidebar de forma asíncrona; observar hasta que aparezca
   const observer = new MutationObserver((_mutations, obs) => {
-    if (document.querySelector(".notion-app-inner, .notion-frame, #notion-app")) {
+    if (getNotionSidebar()) {
       obs.disconnect();
       injectTimerUI();
     }
