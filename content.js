@@ -178,12 +178,34 @@ function injectTimerUI() {
   });
   item.addEventListener("click", onTimerButtonClick);
 
-  // Insertar antes del último hijo para quedar cerca del fondo pero no al final del todo
-  const lastChild = sidebar.lastElementChild;
-  if (lastChild) {
-    sidebar.insertBefore(item, lastChild);
+  // Insertar justo después del ítem "Eeb eComm - Encuestas" del sidebar.
+  // Se busca el elemento que contenga ese texto exacto; si no se encuentra,
+  // cae al penúltimo hijo como fallback.
+  const TARGET_LABEL = "Eeb eComm - Encuestas";
+  const allSidebarItems = Array.from(sidebar.querySelectorAll("*"));
+  const anchor = allSidebarItems.find(
+    el => el.children.length === 0 && el.textContent.trim() === TARGET_LABEL
+  );
+  const anchorRow = anchor ? anchor.closest("[data-block-id], [role='treeitem'], div[style]") || anchor.parentElement : null;
+
+  if (anchorRow && anchorRow.parentElement === sidebar) {
+    // Insertar justo después del elemento ancla
+    anchorRow.insertAdjacentElement("afterend", item);
+  } else if (anchorRow) {
+    // Si el ancla está dentro de un contenedor anidado, insertar después de ese contenedor
+    let node = anchorRow;
+    while (node.parentElement && node.parentElement !== sidebar) {
+      node = node.parentElement;
+    }
+    node.insertAdjacentElement("afterend", item);
   } else {
-    sidebar.appendChild(item);
+    // Fallback: penúltimo hijo del sidebar
+    const lastChild = sidebar.lastElementChild;
+    if (lastChild) {
+      sidebar.insertBefore(item, lastChild);
+    } else {
+      sidebar.appendChild(item);
+    }
   }
 
   // --- Panel de cuenta regresiva (overlay flotante sobre el contenido) ---
