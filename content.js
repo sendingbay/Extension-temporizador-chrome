@@ -175,14 +175,14 @@ const PANEL_CSS = `
 
   #dp-list::-webkit-scrollbar { width: 4px; }
   #dp-list::-webkit-scrollbar-track { background: transparent; }
-  #dp-list::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
+  #dp-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
 
   #dp-play:hover      { background: #2563eb !important; }
-  #dp-reset:hover     { background: #263348 !important; color: #e2e8f0 !important; }
-  #dp-next:hover      { background: #263348 !important; color: #e2e8f0 !important; }
-  #dp-fetch-dom:hover { background: #263348 !important; color: #e2e8f0 !important; }
-  #dp-shuffle:hover   { background: #263348 !important; color: #e2e8f0 !important; }
-  #dp-close:hover     { color: #e2e8f0 !important; background: rgba(255,255,255,.08) !important; }
+  #dp-reset:hover     { background: #e2e8f0 !important; color: #1e293b !important; }
+  #dp-next:hover      { background: #e2e8f0 !important; color: #1e293b !important; }
+  #dp-fetch-dom:hover { background: #e2e8f0 !important; color: #1e293b !important; }
+  #dp-shuffle:hover   { background: #e2e8f0 !important; color: #1e293b !important; }
+  #dp-close:hover     { color: #1e293b !important; background: rgba(0,0,0,.06) !important; }
 
   #dp-list .dp-item {
     display: flex; align-items: center; gap: 7px;
@@ -190,38 +190,38 @@ const PANEL_CSS = `
     transition: background .15s; border-left: 3px solid transparent;
     margin-bottom: 2px;
   }
-  #dp-list .dp-item:hover  { background: rgba(255,255,255,.05); }
-  #dp-list .dp-item.active { background: rgba(59,130,246,.15); border-left-color: #3b82f6; }
-  #dp-list .dp-item.done   { background: rgba(34,197,94,.07);  border-left-color: #22c55e; }
-  #dp-list .dp-item.absent { opacity: .3; border-left-color: transparent; }
+  #dp-list .dp-item:hover  { background: rgba(0,0,0,.04); }
+  #dp-list .dp-item.active { background: rgba(59,130,246,.1); border-left-color: #3b82f6; }
+  #dp-list .dp-item.done   { background: rgba(34,197,94,.1); border-left-color: #16a34a; }
+  #dp-list .dp-item.absent { opacity: .4; border-left-color: transparent; }
   #dp-list .dp-item.absent .dp-pname { text-decoration: line-through; }
 
   #dp-list .dp-avatar {
     width: 28px; height: 28px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
-    background: #475569;
+    background: #94a3b8;
   }
   #dp-list .dp-item.active .dp-avatar { background: #3b82f6; }
   #dp-list .dp-item.done   .dp-avatar { background: #16a34a; }
 
-  #dp-list .dp-pname  { flex: 1; font-size: 13px; color: #cbd5e1; line-height: 1.3; }
-  #dp-list .dp-item.done   .dp-pname { color: #86efac; }
-  #dp-list .dp-item.active .dp-pname { color: #f1f5f9; font-weight: 600; }
-  #dp-list .dp-ptasks { font-size: 10px; color: #475569; white-space: nowrap; }
+  #dp-list .dp-pname  { flex: 1; font-size: 13px; color: #374151; line-height: 1.3; }
+  #dp-list .dp-item.done   .dp-pname { color: #15803d; }
+  #dp-list .dp-item.active .dp-pname { color: #1e3a8a; font-weight: 600; }
+  #dp-list .dp-ptasks { font-size: 10px; color: #94a3b8; white-space: nowrap; }
 
   #dp-list .dp-done-btn, #dp-list .dp-absent-btn {
     background: none; border: none; cursor: pointer;
     font-size: 12px; padding: 2px 4px; border-radius: 4px;
-    transition: color .15s, background .15s; flex-shrink: 0; color: #334155;
+    transition: color .15s, background .15s; flex-shrink: 0; color: #94a3b8;
   }
-  #dp-list .dp-done-btn:hover   { color: #4ade80; background: rgba(74,222,128,.12); }
-  #dp-list .dp-absent-btn:hover { color: #f87171; background: rgba(248,113,113,.12); }
-  #dp-list .dp-item.done   .dp-done-btn   { color: #22c55e; }
-  #dp-list .dp-item.absent .dp-absent-btn { color: #f87171; }
+  #dp-list .dp-done-btn:hover   { color: #16a34a; background: rgba(22,163,74,.1); }
+  #dp-list .dp-absent-btn:hover { color: #dc2626; background: rgba(220,38,38,.1); }
+  #dp-list .dp-item.done   .dp-done-btn   { color: #16a34a; }
+  #dp-list .dp-item.absent .dp-absent-btn { color: #dc2626; }
 
-  #dp-timer-wrap.warning  #dp-timer { color: #f59e0b !important; animation: dp-pulse .5s ease-in-out infinite alternate; }
-  #dp-timer-wrap.finished #dp-timer { color: #22c55e !important; animation: none; }
+  #dp-timer-wrap.warning  #dp-timer { color: #d97706 !important; animation: dp-pulse .5s ease-in-out infinite alternate; }
+  #dp-timer-wrap.finished #dp-timer { color: #16a34a !important; animation: none; }
   @keyframes dp-pulse { from { opacity: 1; } to { opacity: .4; } }
 `;
 
@@ -237,60 +237,60 @@ function injectPanelCSS() {
 function buildPanelHTML() {
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;
-                padding:11px 14px;background:#1e293b;border-bottom:1px solid #263348;">
+                padding:11px 14px;background:#ffffff;border-bottom:1px solid #e2e8f0;">
       <div style="display:flex;align-items:center;gap:7px;">
         <span style="font-size:15px;line-height:1;">⏱</span>
-        <span style="font-size:13px;font-weight:700;color:#e2e8f0;letter-spacing:.3px;">Daily Timer</span>
+        <span style="font-size:13px;font-weight:700;color:#1e293b;letter-spacing:.3px;">Daily Timer</span>
       </div>
-      <button id="dp-close" style="background:none;border:none;color:#475569;cursor:pointer;
+      <button id="dp-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;
               font-size:14px;padding:3px 7px;border-radius:5px;transition:color .15s;" title="Cerrar">✕</button>
     </div>
-    <div style="padding:12px 14px 6px;background:#0f172a;">
-      <div style="background:#1e293b;border-radius:10px;padding:11px 13px;border:1px solid #263348;">
+    <div style="padding:12px 14px 6px;background:#f8fafc;">
+      <div style="background:#ffffff;border-radius:10px;padding:11px 13px;border:1px solid #e2e8f0;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
-                    color:#475569;margin-bottom:5px;font-weight:600;">Turno actual</div>
-        <div id="dp-name" style="font-size:19px;font-weight:700;color:#f1f5f9;
+                    color:#94a3b8;margin-bottom:5px;font-weight:600;">Turno actual</div>
+        <div id="dp-name" style="font-size:19px;font-weight:700;color:#1e293b;
                                   line-height:1.2;min-height:24px;">—</div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
           <div id="dp-tasks"   style="font-size:11px;color:#3b82f6;"></div>
-          <div id="dp-counter" style="font-size:11px;color:#475569;"></div>
+          <div id="dp-counter" style="font-size:11px;color:#94a3b8;"></div>
         </div>
       </div>
     </div>
-    <div id="dp-timer-wrap" style="text-align:center;padding:8px 14px 4px;background:#0f172a;">
+    <div id="dp-timer-wrap" style="text-align:center;padding:8px 14px 4px;background:#f8fafc;">
       <div id="dp-timer" style="font-size:52px;font-weight:800;letter-spacing:-3px;
-           color:#f1f5f9;font-family:'SF Mono','Fira Code','Courier New',monospace;
+           color:#1e293b;font-family:'SF Mono','Fira Code','Courier New',monospace;
            line-height:1;transition:color .3s;">2:00</div>
     </div>
-    <div style="padding:6px 14px 10px;background:#0f172a;">
-      <div style="height:3px;background:#1e293b;border-radius:2px;overflow:hidden;">
+    <div style="padding:6px 14px 10px;background:#f8fafc;">
+      <div style="height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
         <div id="dp-progress" style="height:100%;background:#3b82f6;border-radius:2px;
              width:0%;transition:width .5s ease;"></div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;padding:0 14px 10px;background:#0f172a;">
+    <div style="display:flex;gap:8px;padding:0 14px 10px;background:#f8fafc;">
       <button id="dp-play"  style="flex:2;padding:10px;border:none;border-radius:8px;
               background:#3b82f6;color:#fff;cursor:pointer;font-size:20px;font-weight:700;
               transition:background .15s;" title="Iniciar/Pausar">▶</button>
       <button id="dp-reset" style="flex:1;padding:10px;border:none;border-radius:8px;
-              background:#1e293b;color:#64748b;cursor:pointer;font-size:17px;
+              background:#f1f5f9;color:#64748b;cursor:pointer;font-size:17px;
               transition:background .15s,color .15s;" title="Reiniciar">↺</button>
       <button id="dp-next"  style="flex:1;padding:10px;border:none;border-radius:8px;
-              background:#1e293b;color:#64748b;cursor:pointer;font-size:17px;
+              background:#f1f5f9;color:#64748b;cursor:pointer;font-size:17px;
               transition:background .15s,color .15s;" title="Siguiente">→</button>
     </div>
-    <div id="dp-status" style="text-align:center;font-size:11px;color:#475569;
-         padding:0 14px 6px;background:#0f172a;min-height:16px;"></div>
-    <div style="height:1px;background:#1e293b;"></div>
-    <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#0a1120;">
+    <div id="dp-status" style="text-align:center;font-size:11px;color:#94a3b8;
+         padding:0 14px 6px;background:#f8fafc;min-height:16px;"></div>
+    <div style="height:1px;background:#e2e8f0;"></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#f1f5f9;">
       <button id="dp-fetch-dom" style="flex:1;padding:7px 6px;border:none;border-radius:6px;
-              background:#1e293b;color:#94a3b8;cursor:pointer;font-size:11px;font-weight:500;
+              background:#e2e8f0;color:#475569;cursor:pointer;font-size:11px;font-weight:500;
               transition:background .15s,color .15s;">📄 Cargar lista</button>
       <button id="dp-shuffle" style="padding:7px 11px;border:none;border-radius:6px;
-              background:#1e293b;color:#94a3b8;cursor:pointer;font-size:13px;
+              background:#e2e8f0;color:#475569;cursor:pointer;font-size:13px;
               transition:background .15s,color .15s;" title="Orden aleatorio">🔀</button>
     </div>
-    <div id="dp-list" style="max-height:200px;overflow-y:auto;padding:4px 10px 12px;background:#0a1120;"></div>
+    <div id="dp-list" style="max-height:200px;overflow-y:auto;padding:4px 10px 12px;background:#f1f5f9;"></div>
   `;
 }
 
@@ -428,10 +428,10 @@ function injectTimerUI() {
     left:         "240px",
     zIndex:       "99999",
     width:        "320px",
-    background:   "#1a1a2e",
-    color:        "#e0e0e0",
+    background:   "#f8fafc",
+    color:        "#1e293b",
     borderRadius: "12px",
-    boxShadow:    "0 8px 32px rgba(0,0,0,0.55)",
+    boxShadow:    "0 8px 32px rgba(0,0,0,0.18)",
     fontFamily:   "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     fontSize:     "14px",
     display:      "none",
@@ -494,7 +494,7 @@ function setDpStatus(msg, type = "") {
   const el = document.getElementById("dp-status");
   if (!el) return;
   el.textContent = msg;
-  el.style.color = type === "error" ? "#ff5630" : type === "success" ? "#36b37e" : "#888";
+  el.style.color = type === "error" ? "#dc2626" : type === "success" ? "#16a34a" : "#94a3b8";
 }
 
 function togglePanel(forceState) {
