@@ -112,3 +112,185 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true;
 });
 
+// ==========================
+// ⏱ TIMER FLOTANTE — Notion
+// ==========================
+
+const TIMER_BUTTON_ID  = "daily-timer-btn";
+const TIMER_DISPLAY_ID = "daily-timer-display";
+const TIMER_DURATION   = 2 * 60; // 2 minutos en segundos
+
+let timerInterval = null;
+let secondsLeft   = TIMER_DURATION;
+
+function injectTimerUI() {
+  // Evitar duplicados
+  if (document.getElementById(TIMER_BUTTON_ID)) return;
+
+  // --- Botón flotante ---
+  const btn = document.createElement("button");
+  btn.id = TIMER_BUTTON_ID;
+  btn.textContent = "⏱ Iniciar Daily";
+  Object.assign(btn.style, {
+    position:    "fixed",
+    bottom:      "24px",
+    right:       "24px",
+    zIndex:      "99999",
+    padding:     "10px 16px",
+    background:  "#2eaadc",
+    color:       "#fff",
+    border:      "none",
+    borderRadius:"8px",
+    fontSize:    "14px",
+    fontWeight:  "600",
+    cursor:      "pointer",
+    boxShadow:   "0 4px 12px rgba(0,0,0,0.25)",
+    fontFamily:  "ui-sans-serif, system-ui, sans-serif",
+    transition:  "background 0.2s",
+    userSelect:  "none",
+  });
+
+  // --- Panel de cuenta regresiva ---
+  const display = document.createElement("div");
+  display.id = TIMER_DISPLAY_ID;
+  Object.assign(display.style, {
+    position:      "fixed",
+    bottom:        "74px",
+    right:         "24px",
+    zIndex:        "99999",
+    padding:       "12px 20px",
+    background:    "#1e1e1e",
+    color:         "#fff",
+    borderRadius:  "12px",
+    fontSize:      "28px",
+    fontWeight:    "700",
+    fontFamily:    "ui-monospace, monospace",
+    boxShadow:     "0 4px 16px rgba(0,0,0,0.4)",
+    display:       "none",
+    minWidth:      "110px",
+    textAlign:     "center",
+    letterSpacing: "2px",
+    transition:    "background 0.4s",
+  });
+
+  btn.addEventListener("click", onTimerButtonClick);
+
+  document.body.appendChild(display);
+  document.body.appendChild(btn);
+}
+
+function onTimerButtonClick() {
+  if (timerInterval) {
+    stopTimer();
+  } else {
+    startTimer();
+  }
+}
+
+function startTimer() {
+  secondsLeft = TIMER_DURATION;
+
+  const btn     = document.getElementById(TIMER_BUTTON_ID);
+  const display = document.getElementById(TIMER_DISPLAY_ID);
+
+  if (btn)     btn.textContent        = "⏹ Detener";
+  if (display) display.style.display  = "block";
+
+  // Leer tareas/texto visible del DOM y mostrar en consola
+  logVisibleTasks();
+
+  updateDisplay();
+
+  timerInterval = setInterval(() => {
+    secondsLeft--;
+    updateDisplay();
+
+    if (secondsLeft <= 0) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      onTimerEnd();
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  secondsLeft   = TIMER_DURATION;
+
+  const btn     = document.getElementById(TIMER_BUTTON_ID);
+  const display = document.getElementById(TIMER_DISPLAY_ID);
+
+  if (btn)     btn.textContent       = "⏱ Iniciar Daily";
+  if (display) display.style.display = "none";
+}
+
+function onTimerEnd() {
+  const display = document.getElementById(TIMER_DISPLAY_ID);
+  const btn     = document.getElementById(TIMER_BUTTON_ID);
+
+  if (display) {
+    display.textContent      = "✅ Listo";
+    display.style.background = "#0f9d58";
+  }
+  if (btn) btn.textContent = "⏱ Iniciar Daily";
+
+  // Ocultar panel tras 3 segundos y restaurar color
+  setTimeout(() => {
+    if (display) {
+      display.style.display    = "none";
+      display.style.background = "#1e1e1e";
+    }
+  }, 3000);
+}
+
+function updateDisplay() {
+  const display = document.getElementById(TIMER_DISPLAY_ID);
+  if (!display) return;
+
+  const m = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const s = String(secondsLeft % 60).padStart(2, "0");
+  display.textContent = `${m}:${s}`;
+
+  // Alerta visual cuando quedan ≤ 30 segundos
+  display.style.background = secondsLeft <= 30 ? "#d93025" : "#1e1e1e";
+}
+
+function logVisibleTasks() {
+  const tasks = extractNamesFromNotion();
+  if (tasks.length > 0) {
+    console.group("[Daily Timer] Tareas/elementos visibles en Notion:");
+    tasks.forEach((t, i) => console.log(`  ${i + 1}. ${t}`));
+    console.groupEnd();
+  } else {
+    console.log("[Daily Timer] No se encontraron tareas visibles en esta vista.");
+  }
+}
+
+// ── Inyección con MutationObserver (Notion carga dinámicamente) ──
+function waitForNotionAndInject() {
+  // Notion monta su árbol de forma asíncrona; intentar primero de inmediato.
+  if (document.querySelector(".notion-app-inner, .notion-frame, #notion-app")) {
+    injectTimerUI();
+    return;
+  }
+
+  const observer = new MutationObserver((_mutations, obs) => {
+    if (document.querySelector(".notion-app-inner, .notion-frame, #notion-app")) {
+      obs.disconnect();
+      injectTimerUI();
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// Doble verificación en runtime: solo ejecutar dentro de notion.so
+if (location.hostname.endsWith("notion.so")) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", waitForNotionAndInject);
+  } else {
+    waitForNotionAndInject();
+  }
+}
+
