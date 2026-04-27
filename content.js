@@ -12,11 +12,13 @@ const UI_NOISE = new Set([
   "Share", "Export", "Add a page", "Calculate", "Untitled",
   "No assignee", "Empty", "Count", "Open", "Delete", "Duplicate",
   "Skip to content", "···", "...",
+  "Name",          // cabecera de columna por defecto en Notion (EN)
   // Español
   "Sin título", "Ir al contenido", "Sin asignar", "Vacío",
   "Nueva página", "+ Nueva página", "Nuevo", "Abrir", "Eliminar",
   "Filtrar", "Ordenar", "Agrupar", "Propiedades", "Compartir",
   "Añadir una página", "Calcular",
+  "Nombre",        // cabecera de columna por defecto en Notion (ES)
 ]);
 
 function isNoise(text) {
@@ -442,6 +444,21 @@ function injectTimerUI() {
   injectPanelCSS();
   bindPanelEvents();
   setInterval(updatePanel, 200);
+
+  // Guardia permanente: si Notion re-renderiza el sidebar y elimina nuestro
+  // ítem (p.ej. al abrir/cerrar el desplegable de Jira o navegar), lo vuelve
+  // a insertar automáticamente en la misma posición.
+  const sidebarGuard = new MutationObserver(() => {
+    const currentSidebar = getNotionSidebar();
+    if (!currentSidebar) return;
+    if (!currentSidebar.contains(document.getElementById(TIMER_BUTTON_ID))) {
+      // Limpiar posible nodo huérfano antes de re-inyectar
+      const orphan = document.getElementById(TIMER_BUTTON_ID);
+      if (orphan) orphan.remove();
+      injectTimerUI();
+    }
+  });
+  sidebarGuard.observe(sidebar, { childList: true, subtree: false });
 }
 
 // ── Eventos del panel ─────────────────────────────────────────
