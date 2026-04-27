@@ -285,22 +285,33 @@ function injectTimerUI() {
   item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
   item.addEventListener("click", () => togglePanel());
 
-  // Posición: intentar colocar debajo de "Todo" dentro del bloque Jira.
+  // Posición: intentar colocar el ítem justo después de "Jira" en el sidebar.
   // Estrategia 1 — dentro del desplegable: buscar el nodo de texto "Todo"
   //   que esté descendiente de un bloque que también contenga "Jira".
-  // Estrategia 2 — fallback externo: justo debajo del ítem "Jira" del sidebar.
+  // Estrategia 2a — role="treeitem": buscar el treeitem cuyo leaf diga "Jira".
+  // Estrategia 2b — data-block-id: buscar el bloque de Notion cuyo leaf diga "Jira".
+  // Estrategia 2c — findItemRow: buscar el nodo de texto "Jira" y subir al nivel
+  //   de ítem usando la heurística de hermanos con texto de página.
   // Estrategia 3 — fallback final: penúltimo hijo del sidebar.
 
+  // Busca un nodo hoja cuyo texto sea exactamente labelText
   function findTextNode(labelText) {
     return Array.from(sidebar.querySelectorAll("*")).find(
       el => el.children.length === 0 && el.textContent.trim() === labelText
     );
   }
 
-  function rootInSidebar(el) {
-    // Sube hasta encontrar un hijo directo del sidebar
-    let node = el;
-    while (node.parentElement && node.parentElement !== sidebar) node = node.parentElement;
+  // Sube desde startNode hasta el "row" del ítem del sidebar.
+  // Se detiene cuando el nodo tiene hermanos con 5+ letras consecutivas
+  // (indica que estamos al nivel de ítem, no dentro de un sub-componente).
+  function findItemRow(startNode) {
+    let node = startNode;
+    while (node.parentElement && node.parentElement !== sidebar) {
+      const parent = node.parentElement;
+      const siblings = Array.from(parent.children).filter(s => s !== node);
+      if (siblings.some(s => /[a-zA-ZÀ-ÿ]{5,}/.test(s.textContent))) return node;
+      node = parent;
+    }
     return node;
   }
 
@@ -309,7 +320,6 @@ function injectTimerUI() {
   // Estrategia 1: buscar "Todo" dentro de un contenedor que también tenga "Jira"
   const todoNode = findTextNode("Todo");
   if (todoNode) {
-    // Verificar que haya un ancestro cercano que contenga "Jira"
     let ancestor = todoNode.parentElement;
     let jiraContext = false;
     for (let i = 0; i < 10 && ancestor && ancestor !== sidebar; i++) {
@@ -317,19 +327,39 @@ function injectTimerUI() {
       ancestor = ancestor.parentElement;
     }
     if (jiraContext) {
-      // Subir al row de "Todo" (hijo directo del contenedor del desplegable Jira)
       const todoRow = todoNode.closest("[data-block-id], [role='treeitem'], div[style]") || todoNode.parentElement;
       todoRow.insertAdjacentElement("afterend", item);
       inserted = true;
     }
   }
 
-  // Estrategia 2: fallback — justo después del ítem raíz "Jira" en el sidebar
+  // Estrategia 2a: buscar sidebar item con role="treeitem" cuyo leaf diga "Jira"
+  if (!inserted) {
+    const jiraTreeItem = Array.from(sidebar.querySelectorAll('[role="treeitem"]'))
+      .find(el => Array.from(el.querySelectorAll("*"))
+        .some(n => n.children.length === 0 && n.textContent.trim() === "Jira"));
+    if (jiraTreeItem) {
+      jiraTreeItem.insertAdjacentElement("afterend", item);
+      inserted = true;
+    }
+  }
+
+  // Estrategia 2b: buscar bloque Notion con data-block-id cuyo leaf diga "Jira"
+  if (!inserted) {
+    const jiraBlock = Array.from(sidebar.querySelectorAll("[data-block-id]"))
+      .find(el => Array.from(el.querySelectorAll("*"))
+        .some(n => n.children.length === 0 && n.textContent.trim() === "Jira"));
+    if (jiraBlock) {
+      jiraBlock.insertAdjacentElement("afterend", item);
+      inserted = true;
+    }
+  }
+
+  // Estrategia 2c: buscar el nodo de texto "Jira" y subir al nivel de ítem
   if (!inserted) {
     const jiraNode = findTextNode("Jira");
     if (jiraNode) {
-      const jiraRoot = rootInSidebar(jiraNode);
-      jiraRoot.insertAdjacentElement("afterend", item);
+      findItemRow(jiraNode).insertAdjacentElement("afterend", item);
       inserted = true;
     }
   }
