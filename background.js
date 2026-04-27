@@ -11,7 +11,8 @@ const DEFAULT_STATE = {
   duration: 120000,  // 2 minutos en ms
   currentIndex: 0,
   participants: [],  // [{ name: string, taskCount: number }]
-  absent: []         // índices de participantes marcados como ausentes
+  absent: [],        // índices de participantes marcados como ausentes
+  done: []           // índices marcados manualmente como terminados
 };
 
 let timerState = { ...DEFAULT_STATE };
@@ -442,6 +443,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             timerState.elapsed      = 0;
             saveState();
           }
+          sendResponse({ timerState });
+          break;
+        }
+
+        case "SHUFFLE_PARTICIPANTS": {
+          const arr = [...timerState.participants];
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+          timerState.participants = arr;
+          timerState.currentIndex = 0;
+          timerState.running      = false;
+          timerState.startTime    = null;
+          timerState.elapsed      = 0;
+          timerState.absent       = [];
+          timerState.done         = [];
+          saveState();
+          sendResponse({ timerState });
+          break;
+        }
+
+        case "TOGGLE_DONE": {
+          const idx  = msg.index;
+          const done = timerState.done ? [...timerState.done] : [];
+          const pos  = done.indexOf(idx);
+          if (pos === -1) done.push(idx);
+          else done.splice(pos, 1);
+          timerState.done = done;
+          saveState();
           sendResponse({ timerState });
           break;
         }
