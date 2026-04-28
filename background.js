@@ -190,6 +190,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               "Propiedades", "Compartir", "Añadir una página", "Calcular",
               "Todo", "Backlog", "Mis Tareas", "Involucrado", "Canva Activo",
               "Por Usuarios", "Canva / Sprints",
+              // Botones de UI de Notion (no son nombres de persona)
+              "Nuevo grupo", "+ Nuevo grupo", "Cargar más grupos", "Cargar más",
+              "New group", "+ New group", "Load more groups", "Load more",
+              // Personas excluidas explícitamente
+              "D.Casitas", "Daniel D'Orazio",
             ]);
 
             function clean(t) {
