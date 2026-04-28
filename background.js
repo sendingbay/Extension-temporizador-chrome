@@ -194,7 +194,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               "Nuevo grupo", "+ Nuevo grupo", "Cargar más grupos", "Cargar más",
               "New group", "+ New group", "Load more groups", "Load more",
               // Personas excluidas explícitamente
-              "D.Casitas", "Daniel D'Orazio",
+              "D.Casitas", "Daniel D'Orazio", "Sin Asignado",
             ]);
 
             function clean(t) {

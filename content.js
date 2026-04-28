@@ -22,7 +22,7 @@ const UI_NOISE = new Set([
   "Nombre",        // cabecera de columna por defecto en Notion (ES)
   "Cargar más grupos", "Nuevo grupo", "+ Nuevo grupo", "Cargar más",
   // Personas excluidas explícitamente
-  "D.Casitas", "Daniel D'Orazio",
+  "D.Casitas", "Daniel D'Orazio", "Sin Asignado"
 ]);
 
 function isNoise(text) {
