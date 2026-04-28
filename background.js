@@ -178,8 +178,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true, url: "https://www.notion.so/*" });
           const tab = activeTabs[0] || allTabs[0];
 
-          // Función autocontenida que se inyecta y ejecuta directamente en la pestaña
-          function notionScraper() {
+          // Función autocontenida que se inyecta y ejecuta directamente en la pestaña.
+          // Es async para poder recorrer el scroll horizontal del tablero y capturar
+          // columnas virtualizadas que Notion elimina del DOM cuando están fuera de pantalla.
+          async function notionScraper() {
             const NOISE = new Set([
               "New", "Filter", "Sort", "Search", "Group", "Properties",
               "Share", "Export", "Add a page", "Calculate", "Untitled",
@@ -204,31 +206,89 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               return !t || t.length < 2 || t.length > 60 || NOISE.has(t) || /^\d+$/.test(t);
             }
 
-            // La sidebar de Notion ocupa ~230px fijos. No la detectamos
-            // dinámicamente porque el cálculo previo podía devolver un valor
-            // enorme (p.ej. el contenedor del board) y excluía columnas.
             const SIDEBAR_RIGHT = 230;
+            const wait = ms => new Promise(r => setTimeout(r, ms));
 
-            // ── ESTRATEGIA PRINCIPAL: escaneo de nodos de texto ──────────────
-            // Buscamos todos los textos visibles a la derecha de la sidebar,
-            // los agrupamos por franja Y (30px) y la franja más alta con ≥ 3
-            // textos distintos repartidos a lo ancho = fila de cabeceras.
-            const textItems = [];
-            const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-            let tn;
-            while ((tn = tw.nextNode())) {
-              const t = clean(tn.textContent);
-              if (isNoise(t)) continue;
-              const el = tn.parentElement;
-              if (!el) continue;
-              const r = el.getBoundingClientRect();
-              // Descartar elementos invisibles (virtual scroll, display:none, etc.)
-              if (r.width < 4 || r.height < 4) continue;
-              if (r.left < SIDEBAR_RIGHT || r.top < 55) continue;
-              textItems.push({ t, x: r.left, y: r.top });
+            // ── Buscar el contenedor con scroll horizontal del tablero ────────
+            function findHScroller() {
+              // Selectores específicos de Notion primero
+              for (const sel of [
+                ".notion-board-view",
+                '[class*="boardView"]',
+                '[data-block-view-type="board"]',
+              ]) {
+                const el = document.querySelector(sel);
+                if (el && el.scrollWidth > el.clientWidth + 100) return el;
+              }
+              // Genérico: elemento con overflow-x scroll/auto más ancho visible
+              let best = null;
+              document.querySelectorAll("*").forEach(el => {
+                if (el.scrollWidth <= el.clientWidth + 100) return;
+                const r = el.getBoundingClientRect();
+                if (r.width < 400 || r.top < 40 || r.top > 500) return;
+                const ox = window.getComputedStyle(el).overflowX;
+                if (ox !== "scroll" && ox !== "auto") return;
+                if (!best || el.scrollWidth > best.scrollWidth) best = el;
+              });
+              return best;
             }
 
-            // Agrupar en franjas Y de 30px
+            // ── Recopilar nodos de texto visibles en el viewport actual ───────
+            // absX = scrollLeft + rect.left → posición absoluta dentro del tablero
+            function snapshot(scrollLeft) {
+              const items = [];
+              const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+              let tn;
+              while ((tn = tw.nextNode())) {
+                const t = clean(tn.textContent);
+                if (isNoise(t)) continue;
+                const el = tn.parentElement;
+                if (!el) continue;
+                const r = el.getBoundingClientRect();
+                if (r.width < 4 || r.height < 4) continue;
+                if (r.left < SIDEBAR_RIGHT || r.top < 55) continue;
+                items.push({ t, absX: scrollLeft + r.left, y: r.top });
+              }
+              return items;
+            }
+
+            // ── Recorrer el tablero de izquierda a derecha ───────────────────
+            // allItems: clave = texto, valor = {t, absX, y}
+            // Se conserva la primera aparición (la más a la izquierda).
+            const allItems = new Map();
+
+            const scroller = findHScroller();
+            if (scroller) {
+              const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+              const STEP = Math.max(250, Math.floor(scroller.clientWidth * 0.55));
+
+              // Ir al inicio para no perder las columnas izquierdas
+              scroller.scrollLeft = 0;
+              await wait(350);
+
+              let prevScroll = -1;
+              while (true) {
+                const cur = scroller.scrollLeft;
+                snapshot(cur).forEach(item => {
+                  if (!allItems.has(item.t)) allItems.set(item.t, item);
+                });
+                if (cur >= maxScroll - 5 || cur === prevScroll) break;
+                prevScroll = cur;
+                scroller.scrollLeft = cur + STEP;
+                await wait(350);
+              }
+            } else {
+              // Sin scroll horizontal → capturar lo que haya visible
+              snapshot(0).forEach(item => {
+                if (!allItems.has(item.t)) allItems.set(item.t, item);
+              });
+            }
+
+            const textItems = [...allItems.values()];
+
+            // ── Detección de la fila de cabeceras ────────────────────────────
+            // Agrupamos por franja Y de 30px; la primera franja con ≥ 3 textos
+            // distintos distribuidos > 150px horizontalmente = fila de nombres.
             const yBuckets = new Map();
             textItems.forEach(it => {
               const key = Math.round(it.y / 30) * 30;
@@ -236,14 +296,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               yBuckets.get(key).push(it);
             });
 
-            // Ordenar franjas de arriba a abajo; elegir la primera con ≥ 3
-            // textos distintos distribuidos a lo largo del eje X (> 200px)
             const sortedBands = [...yBuckets.entries()].sort((a, b) => a[0] - b[0]);
             let headerItems = null;
             for (const [, items] of sortedBands) {
               const distinct = [...new Map(items.map(i => [i.t, i])).values()];
               if (distinct.length < 3) continue;
-              const xs = distinct.map(i => i.x);
+              const xs = distinct.map(i => i.absX);
               if (Math.max(...xs) - Math.min(...xs) < 150) continue;
               headerItems = distinct;
               break;
@@ -251,7 +309,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
             if (headerItems) {
               return headerItems
-                .sort((a, b) => a.x - b.x)
+                .sort((a, b) => a.absX - b.absX)
                 .map(i => i.t);
             }
 
