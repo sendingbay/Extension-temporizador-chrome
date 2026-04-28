@@ -13,12 +13,14 @@ const UI_NOISE = new Set([
   "No assignee", "Empty", "Count", "Open", "Delete", "Duplicate",
   "Skip to content", "···", "...",
   "Name",          // cabecera de columna por defecto en Notion (EN)
+  "Load more groups", "New group", "+ New group", "Load more",
   // Español
   "Sin título", "Ir al contenido", "Sin asignar", "Vacío",
   "Nueva página", "+ Nueva página", "Nuevo", "Abrir", "Eliminar",
   "Filtrar", "Ordenar", "Agrupar", "Propiedades", "Compartir",
   "Añadir una página", "Calcular",
   "Nombre",        // cabecera de columna por defecto en Notion (ES)
+  "Cargar más grupos", "Nuevo grupo", "+ Nuevo grupo", "Cargar más",
 ]);
 
 function isNoise(text) {
@@ -106,10 +108,36 @@ function extractNamesFromNotion() {
   return results;
 }
 
+// ── Auto-click ALL "Cargar más grupos" buttons y extraer ─────
+// Expande todos los grupos colapsados automáticamente (máx. 10 rondas)
+// antes de extraer los nombres, para incluir participantes ocultos.
+async function autoClickAndExtract() {
+  const LOAD_MORE_TEXTS = [
+    "Cargar más grupos", "Load more groups",
+    "Cargar más", "Load more",
+    "Show more", "Ver más",
+  ];
+
+  for (let round = 0; round < 10; round++) {
+    const clickable = Array.from(
+      document.querySelectorAll('button, [role="button"], [tabindex="0"]')
+    );
+    const buttons = clickable.filter(el =>
+      LOAD_MORE_TEXTS.some(t => el.textContent.trim().startsWith(t))
+    );
+    if (buttons.length === 0) break;   // no quedan botones → terminar
+    buttons.forEach(b => b.click());
+    await new Promise(r => setTimeout(r, 700));  // esperar que el DOM actualice
+  }
+
+  return extractNamesFromNotion();
+}
+
 // ── Escuchar mensajes del background/popup ───────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "GET_DOM_PARTICIPANTS") {
-    sendResponse({ names: extractNamesFromNotion() });
+    autoClickAndExtract().then(names => sendResponse({ names }));
+    return true;
   }
   return true;
 });
@@ -167,68 +195,68 @@ function getNotionSidebar() {
     document.querySelector(".notion-sidebar .notion-scroller.vertical") ||
     document.querySelector(".notion-sidebar-container") ||
     document.querySelector(".notion-sidebar") ||
+    document.querySelector('[role="navigation"]') ||
+    document.querySelector('[aria-label*="sidebar" i]') ||
+    document.querySelector('[aria-label*="navigation" i]') ||
     null
   );
 }
 
-// ── CSS del panel ─────────────────────────────────────────────
+// ── CSS del panel (tema oscuro Notion) ───────────────────────
 const PANEL_CSS = `
   #daily-timer-panel * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  #dp-list::-webkit-scrollbar { width: 4px; }
+  #dp-list::-webkit-scrollbar { width: 3px; }
   #dp-list::-webkit-scrollbar-track { background: transparent; }
-  #dp-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  #dp-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 
-  #dp-play:hover      { background: #2563eb !important; }
-  #dp-reset:hover     { background: #e2e8f0 !important; color: #1e293b !important; }
-  #dp-next:hover      { background: #e2e8f0 !important; color: #1e293b !important; }
-  #dp-fetch-dom:hover { background: #e2e8f0 !important; color: #1e293b !important; }
-  #dp-shuffle:hover   { background: #e2e8f0 !important; color: #1e293b !important; }
-  #dp-close:hover     { color: #1e293b !important; background: rgba(0,0,0,.06) !important; }
+  #dp-play:hover                              { background: #1a6fc4 !important; }
+  #dp-reset:hover, #dp-next:hover,
+  #dp-fetch-dom:hover, #dp-shuffle:hover      { background: rgba(255,255,255,0.1) !important; }
 
   #dp-list .dp-item {
-    display: flex; align-items: center; gap: 7px;
-    padding: 7px 10px; border-radius: 8px; cursor: pointer;
-    transition: background .15s; border-left: 3px solid transparent;
-    margin-bottom: 2px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px; border-radius: 4px; cursor: pointer;
+    transition: background .15s; border-left: 2px solid transparent;
+    margin-bottom: 1px;
   }
-  #dp-list .dp-item:hover  { background: rgba(0,0,0,.04); }
-  #dp-list .dp-item.active { background: rgba(59,130,246,.1); border-left-color: #3b82f6; }
-  #dp-list .dp-item.done   { background: rgba(34,197,94,.1); border-left-color: #16a34a; }
+  #dp-list .dp-item:hover  { background: rgba(255,255,255,0.055); }
+  #dp-list .dp-item.active { background: rgba(35,131,226,0.18); border-left-color: #2383e2; }
+  #dp-list .dp-item.done   { background: rgba(52,168,83,0.15);  border-left-color: #34a853; }
   #dp-list .dp-item.absent { opacity: .4; border-left-color: transparent; }
   #dp-list .dp-item.absent .dp-pname { text-decoration: line-through; }
 
   #dp-list .dp-avatar {
-    width: 28px; height: 28px; border-radius: 50%;
+    width: 22px; height: 22px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
-    background: #94a3b8;
+    font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
+    background: rgba(255,255,255,0.18);
   }
-  #dp-list .dp-item.active .dp-avatar { background: #3b82f6; }
-  #dp-list .dp-item.done   .dp-avatar { background: #16a34a; }
+  #dp-list .dp-item.active .dp-avatar { background: #2383e2; }
+  #dp-list .dp-item.done   .dp-avatar { background: #34a853; }
 
-  #dp-list .dp-pname  { flex: 1; font-size: 13px; color: #374151; line-height: 1.3; }
-  #dp-list .dp-item.done   .dp-pname { color: #15803d; }
-  #dp-list .dp-item.active .dp-pname { color: #1e3a8a; font-weight: 600; }
-  #dp-list .dp-ptasks { font-size: 10px; color: #94a3b8; white-space: nowrap; }
+  #dp-list .dp-pname  { flex: 1; font-size: 14px; color: rgba(255,255,255,0.81); line-height: 1.3; }
+  #dp-list .dp-item.done   .dp-pname { color: #34a853; }
+  #dp-list .dp-item.active .dp-pname { color: #fff; font-weight: 600; }
+  #dp-list .dp-ptasks { font-size: 9px; color: rgba(255,255,255,0.3); white-space: nowrap; }
 
-  #dp-list .dp-done-btn, #dp-list .dp-absent-btn {
+  #dp-list .dp-absent-btn {
     background: none; border: none; cursor: pointer;
-    font-size: 12px; padding: 2px 4px; border-radius: 4px;
-    transition: color .15s, background .15s; flex-shrink: 0; color: #94a3b8;
+    font-size: 11px; padding: 2px 3px; border-radius: 3px;
+    transition: color .15s, background .15s; flex-shrink: 0;
+    color: rgba(255,255,255,0.2);
   }
-  #dp-list .dp-done-btn:hover   { color: #16a34a; background: rgba(22,163,74,.1); }
-  #dp-list .dp-absent-btn:hover { color: #dc2626; background: rgba(220,38,38,.1); }
-  #dp-list .dp-item.done   .dp-done-btn   { color: #16a34a; }
-  #dp-list .dp-item.absent .dp-absent-btn { color: #dc2626; }
+  #dp-list .dp-absent-btn:hover        { color: #f87171; background: rgba(248,113,113,.15); }
+  #dp-list .dp-item.absent .dp-absent-btn { color: #f87171; }
 
-  #dp-timer-wrap.warning  #dp-timer { color: #d97706 !important; animation: dp-pulse .5s ease-in-out infinite alternate; }
-  #dp-timer-wrap.finished #dp-timer { color: #16a34a !important; animation: none; }
-  @keyframes dp-pulse { from { opacity: 1; } to { opacity: .4; } }
+  #dp-timer-wrap.warning  #dp-timer { color: #fbbf24 !important; animation: dp-pulse .5s ease-in-out infinite alternate; }
+  #dp-timer-wrap.finished #dp-timer { color: #34a853 !important; animation: none; }
+  @keyframes dp-pulse { from { opacity: 1; } to { opacity: .35; } }
 `;
 
 function injectPanelCSS() {
-  if (document.getElementById("daily-panel-css")) return;
+  const existing = document.getElementById("daily-panel-css");
+  if (existing) existing.remove();
   const style = document.createElement("style");
   style.id = "daily-panel-css";
   style.textContent = PANEL_CSS;
@@ -238,61 +266,73 @@ function injectPanelCSS() {
 // ── Construcción del HTML del panel ──────────────────────────
 function buildPanelHTML() {
   return `
-    <div style="display:flex;align-items:center;justify-content:space-between;
-                padding:11px 14px;background:#ffffff;border-bottom:1px solid #e2e8f0;">
-      <div style="display:flex;align-items:center;gap:7px;">
-        <span style="font-size:15px;line-height:1;">⏱</span>
-        <span style="font-size:13px;font-weight:700;color:#1e293b;letter-spacing:.3px;">Daily Timer</span>
-      </div>
-      <button id="dp-close" style="background:none;border:none;color:#94a3b8;cursor:pointer;
-              font-size:14px;padding:3px 7px;border-radius:5px;transition:color .15s;" title="Cerrar">✕</button>
-    </div>
-    <div style="padding:12px 14px 6px;background:#f8fafc;">
-      <div style="background:#ffffff;border-radius:10px;padding:11px 13px;border:1px solid #e2e8f0;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
-                    color:#94a3b8;margin-bottom:5px;font-weight:600;">Turno actual</div>
-        <div id="dp-name" style="font-size:19px;font-weight:700;color:#1e293b;
-                                  line-height:1.2;min-height:24px;">—</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-          <div id="dp-tasks"   style="font-size:11px;color:#3b82f6;"></div>
-          <div id="dp-counter" style="font-size:11px;color:#94a3b8;"></div>
+    <div style="padding:6px 10px 10px;">
+
+      <!-- Separador superior -->
+      <div style="height:1px;background:rgba(255,255,255,0.07);margin-bottom:8px;"></div>
+
+      <!-- Turno actual -->
+      <div style="background:rgba(255,255,255,0.05);border-radius:5px;
+                  padding:7px 9px;margin-bottom:7px;border:1px solid rgba(255,255,255,0.07);">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;
+                    color:rgba(255,255,255,0.35);margin-bottom:2px;font-weight:600;">Turno actual</div>
+        <div id="dp-name" style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.87);
+                                  line-height:1.3;min-height:18px;">—</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+          <div id="dp-tasks"   style="font-size:10px;color:#2383e2;"></div>
+          <div id="dp-counter" style="font-size:10px;color:rgba(255,255,255,0.3);"></div>
         </div>
       </div>
-    </div>
-    <div id="dp-timer-wrap" style="text-align:center;padding:8px 14px 4px;background:#f8fafc;">
-      <div id="dp-timer" style="font-size:52px;font-weight:800;letter-spacing:-3px;
-           color:#1e293b;font-family:'SF Mono','Fira Code','Courier New',monospace;
-           line-height:1;transition:color .3s;">2:00</div>
-    </div>
-    <div style="padding:6px 14px 10px;background:#f8fafc;">
-      <div style="height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;">
-        <div id="dp-progress" style="height:100%;background:#3b82f6;border-radius:2px;
+
+      <!-- Timer -->
+      <div id="dp-timer-wrap" style="text-align:center;padding:2px 0;">
+        <div id="dp-timer" style="font-size:38px;font-weight:800;letter-spacing:-2px;
+             color:rgba(255,255,255,0.87);
+             font-family:'SF Mono','Fira Code','Courier New',monospace;
+             line-height:1;transition:color .3s;">2:00</div>
+      </div>
+
+      <!-- Barra de progreso -->
+      <div style="height:2px;background:rgba(255,255,255,0.08);border-radius:2px;
+                  margin:6px 0 8px;overflow:hidden;">
+        <div id="dp-progress" style="height:100%;background:#2383e2;border-radius:2px;
              width:0%;transition:width .5s ease;"></div>
       </div>
+
+      <!-- Controles -->
+      <div style="display:flex;gap:5px;margin-bottom:5px;">
+        <button id="dp-play"  style="flex:2;padding:7px 0;border:none;border-radius:4px;
+                background:#2383e2;color:#fff;cursor:pointer;font-size:16px;
+                transition:background .15s;" title="Iniciar/Pausar">▶</button>
+        <button id="dp-reset" style="flex:1;padding:7px 0;border:none;border-radius:4px;
+                background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.65);
+                cursor:pointer;font-size:14px;transition:background .15s;"
+                title="Reiniciar">↺</button>
+        <button id="dp-next"  style="flex:1;padding:7px 0;border:none;border-radius:4px;
+                background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.65);
+                cursor:pointer;font-size:14px;transition:background .15s;"
+                title="Siguiente">→</button>
+      </div>
+
+      <!-- Estado -->
+      <div id="dp-status" style="text-align:center;font-size:10px;
+           color:rgba(255,255,255,0.35);min-height:13px;margin-bottom:5px;"></div>
+
+      <!-- Acciones -->
+      <div style="display:flex;gap:4px;margin-bottom:5px;">
+        <button id="dp-fetch-dom" style="flex:1;padding:5px 4px;border:none;border-radius:4px;
+                background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.55);
+                cursor:pointer;font-size:10px;font-weight:500;
+                transition:background .15s;">📄 Cargar lista</button>
+        <button id="dp-shuffle" style="padding:5px 9px;border:none;border-radius:4px;
+                background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.55);
+                cursor:pointer;font-size:12px;transition:background .15s;"
+                title="Orden aleatorio">🔀</button>
+      </div>
+
+      <!-- Lista de participantes -->
+      <div id="dp-list" style="max-height:180px;overflow-y:auto;"></div>
     </div>
-    <div style="display:flex;gap:8px;padding:0 14px 10px;background:#f8fafc;">
-      <button id="dp-play"  style="flex:2;padding:10px;border:none;border-radius:8px;
-              background:#3b82f6;color:#fff;cursor:pointer;font-size:20px;font-weight:700;
-              transition:background .15s;" title="Iniciar/Pausar">▶</button>
-      <button id="dp-reset" style="flex:1;padding:10px;border:none;border-radius:8px;
-              background:#f1f5f9;color:#64748b;cursor:pointer;font-size:17px;
-              transition:background .15s,color .15s;" title="Reiniciar">↺</button>
-      <button id="dp-next"  style="flex:1;padding:10px;border:none;border-radius:8px;
-              background:#f1f5f9;color:#64748b;cursor:pointer;font-size:17px;
-              transition:background .15s,color .15s;" title="Siguiente">→</button>
-    </div>
-    <div id="dp-status" style="text-align:center;font-size:11px;color:#94a3b8;
-         padding:0 14px 6px;background:#f8fafc;min-height:16px;"></div>
-    <div style="height:1px;background:#e2e8f0;"></div>
-    <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#f1f5f9;">
-      <button id="dp-fetch-dom" style="flex:1;padding:7px 6px;border:none;border-radius:6px;
-              background:#e2e8f0;color:#475569;cursor:pointer;font-size:11px;font-weight:500;
-              transition:background .15s,color .15s;">📄 Cargar lista</button>
-      <button id="dp-shuffle" style="padding:7px 11px;border:none;border-radius:6px;
-              background:#e2e8f0;color:#475569;cursor:pointer;font-size:13px;
-              transition:background .15s,color .15s;" title="Orden aleatorio">🔀</button>
-    </div>
-    <div id="dp-list" style="max-height:200px;overflow-y:auto;padding:4px 10px 12px;background:#f1f5f9;"></div>
   `;
 }
 
@@ -301,7 +341,12 @@ function injectTimerUI() {
   if (document.getElementById(TIMER_BUTTON_ID)) return;
 
   const sidebar = getNotionSidebar();
-  if (!sidebar) return;
+
+  if (!sidebar) {
+    // Sin sidebar → devolver false para que el retry lo intente más tarde.
+    // El botón flotante solo se usa como último recurso desde waitForNotionAndInject.
+    return false;
+  }
 
   // Ítem del sidebar (estilo nativo Notion)
   const item = document.createElement("div");
@@ -343,22 +388,26 @@ function injectTimerUI() {
   //   de ítem usando la heurística de hermanos con texto de página.
   // Estrategia 3 — fallback final: penúltimo hijo del sidebar.
 
-  // Busca un nodo hoja cuyo texto sea exactamente labelText
+  // Busca un elemento cuyo texto visible sea exactamente labelText.
+  // Primero hoja pura (sin hijos), luego hoja con máximo 2 sub-nodos
+  // (Notion a veces añade spans internos para íconos o a11y).
   function findTextNode(labelText) {
-    return Array.from(sidebar.querySelectorAll("*")).find(
-      el => el.children.length === 0 && el.textContent.trim() === labelText
+    const all = Array.from(sidebar.querySelectorAll("*"));
+    return (
+      all.find(el => el.children.length === 0 && el.textContent.trim() === labelText) ||
+      all.find(el => el.children.length <= 2 && el.textContent.trim() === labelText)
     );
   }
 
   // Sube desde startNode hasta el "row" del ítem del sidebar.
-  // Se detiene cuando el nodo tiene hermanos con 5+ letras consecutivas
-  // (indica que estamos al nivel de ítem, no dentro de un sub-componente).
+  // Se detiene cuando el nodo tiene hermanos con 3+ letras consecutivas
+  // (umbral reducido de 5 a 3 para cubrir nombres cortos como "Jira").
   function findItemRow(startNode) {
     let node = startNode;
     while (node.parentElement && node.parentElement !== sidebar) {
       const parent = node.parentElement;
       const siblings = Array.from(parent.children).filter(s => s !== node);
-      if (siblings.some(s => /[a-zA-ZÀ-ÿ]{5,}/.test(s.textContent))) return node;
+      if (siblings.some(s => /[a-zA-ZÀ-ÿ]{3,}/.test(s.textContent))) return node;
       node = parent;
     }
     return node;
@@ -386,7 +435,7 @@ function injectTimerUI() {
   if (!inserted) {
     const jiraTreeItem = Array.from(sidebar.querySelectorAll('[role="treeitem"]'))
       .find(el => Array.from(el.querySelectorAll("*"))
-        .some(n => n.children.length === 0 && n.textContent.trim() === "Jira"));
+        .some(n => n.children.length <= 2 && n.textContent.trim() === "Jira"));
     if (jiraTreeItem) {
       jiraTreeItem.insertAdjacentElement("afterend", item);
       inserted = true;
@@ -397,9 +446,19 @@ function injectTimerUI() {
   if (!inserted) {
     const jiraBlock = Array.from(sidebar.querySelectorAll("[data-block-id]"))
       .find(el => Array.from(el.querySelectorAll("*"))
-        .some(n => n.children.length === 0 && n.textContent.trim() === "Jira"));
+        .some(n => n.children.length <= 2 && n.textContent.trim() === "Jira"));
     if (jiraBlock) {
       jiraBlock.insertAdjacentElement("afterend", item);
+      inserted = true;
+    }
+  }
+
+  // Estrategia 2d: buscar por role="link" o anchor cuyo texto contenga "Jira"
+  if (!inserted) {
+    const jiraLink = Array.from(sidebar.querySelectorAll('[role="link"], a'))
+      .find(el => el.textContent.trim() === "Jira");
+    if (jiraLink) {
+      findItemRow(jiraLink).insertAdjacentElement("afterend", item);
       inserted = true;
     }
   }
@@ -413,58 +472,48 @@ function injectTimerUI() {
     }
   }
 
-  // Estrategia 3: penúltimo hijo del sidebar
+  // Si ninguna estrategia encontró "Jira", el sidebar aún no está listo.
+  // Devolvemos false para que el retry lo intente más tarde sin insertar
+  // el botón en una posición incorrecta.
   if (!inserted) {
-    const lastChild = sidebar.lastElementChild;
-    if (lastChild) sidebar.insertBefore(item, lastChild);
-    else sidebar.appendChild(item);
+    return false;
   }
 
-  // Panel flotante junto al sidebar
-  const panel = document.createElement("div");
-  panel.id = PANEL_ID;
-  panel.innerHTML = buildPanelHTML();
-  Object.assign(panel.style, {
-    position:     "fixed",
-    bottom:       "24px",
-    left:         "240px",
-    zIndex:       "99999",
-    width:        "320px",
-    background:   "#f8fafc",
-    color:        "#1e293b",
-    borderRadius: "12px",
-    boxShadow:    "0 8px 32px rgba(0,0,0,0.18)",
-    fontFamily:   "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    fontSize:     "14px",
-    display:      "none",
-    overflow:     "hidden",
-  });
+  // Panel inline en el sidebar (justo debajo del botón, no flotante).
+  // Solo se crea una vez aunque injectTimerUI se llame varias veces.
+  if (!document.getElementById(PANEL_ID)) {
+    const panel = document.createElement("div");
+    panel.id = PANEL_ID;
+    panel.innerHTML = buildPanelHTML();
+    Object.assign(panel.style, {
+      overflow:   "hidden",
+      maxHeight:  "0",
+      transition: "max-height 0.28s ease",
+    });
+    item.insertAdjacentElement("afterend", panel);
+    injectPanelCSS();
+    bindPanelEvents();
+    setInterval(updatePanel, 200);
+  }
 
-  document.body.appendChild(panel);
-  injectPanelCSS();
-  bindPanelEvents();
-  setInterval(updatePanel, 200);
-
-  // Guardia permanente: si Notion re-renderiza el sidebar y elimina nuestro
-  // ítem (p.ej. al abrir/cerrar el desplegable de Jira o navegar), lo vuelve
-  // a insertar automáticamente en la misma posición.
+  // Guardia permanente: re-inyectar el botón si Notion lo elimina al
+  // navegar entre páginas (React re-renders). subtree:true + debounce.
+  let guardTimer = null;
   const sidebarGuard = new MutationObserver(() => {
-    const currentSidebar = getNotionSidebar();
-    if (!currentSidebar) return;
-    if (!currentSidebar.contains(document.getElementById(TIMER_BUTTON_ID))) {
-      // Limpiar posible nodo huérfano antes de re-inyectar
-      const orphan = document.getElementById(TIMER_BUTTON_ID);
-      if (orphan) orphan.remove();
-      injectTimerUI();
-    }
+    clearTimeout(guardTimer);
+    guardTimer = setTimeout(() => {
+      if (!document.getElementById(TIMER_BUTTON_ID)) {
+        injectTimerUI();
+      }
+    }, 300);
   });
-  sidebarGuard.observe(sidebar, { childList: true, subtree: false });
+  sidebarGuard.observe(sidebar, { childList: true, subtree: true });
+
+  return true;
 }
 
 // ── Eventos del panel ─────────────────────────────────────────
 function bindPanelEvents() {
-  document.getElementById("dp-close").addEventListener("click", () => togglePanel(false));
-
   document.getElementById("dp-play").addEventListener("click", async () => {
     if (panelAudioCtx?.state === "suspended") panelAudioCtx.resume();
     await sendBg("START_PAUSE");
@@ -518,8 +567,10 @@ function togglePanel(forceState) {
   const panel = document.getElementById(PANEL_ID);
   if (!panel) return;
   panelVisible = typeof forceState === "boolean" ? forceState : !panelVisible;
-  panel.style.display = panelVisible ? "block" : "none";
+  // Animar con max-height (el panel está inline en el sidebar)
+  panel.style.maxHeight = panelVisible ? "600px" : "0";
   if (panelVisible) {
+    _lastListFingerprint = ""; // forzar re-render al abrir
     sendBg("GET_STATE").then(res => {
       if (!res?.timerState?.participants?.length) autoLoadFromDom();
     });
@@ -614,17 +665,38 @@ async function updatePanel() {
 }
 
 // ── Lista de participantes ────────────────────────────────────────────
+// Guardamos la última "huella" para evitar reconstruir el DOM
+// en cada tick del temporizador y eliminar el parpadeo al pasar el cursor.
+let _lastListFingerprint = "";
+
 function renderParticipantList(participants, currentIndex, absent, done = []) {
   const container = document.getElementById("dp-list");
   if (!container) return;
 
   if (!participants || participants.length === 0) {
-    container.innerHTML =
-      '<div style="color:#555;font-size:12px;text-align:center;padding:8px 0;">' +
+    const empty = '<div style="color:#555;font-size:12px;text-align:center;padding:8px 0;">' +
       'Carga los participantes con los botones de arriba.</div>';
+    if (container.innerHTML !== empty) container.innerHTML = empty;
+    _lastListFingerprint = "";
     return;
   }
 
+  // Calcular huella: nombres + estado de cada participante
+  const fingerprint = participants.map((p, i) => {
+    const isAbsent = absent.includes(i);
+    const state = i === currentIndex && !isAbsent ? "A"
+                : i < currentIndex  && !isAbsent ? "D"
+                : isAbsent ? "X" : "-";
+    return `${p.name}|${p.taskCount}|${state}`;
+  }).join(";");
+
+  if (fingerprint === _lastListFingerprint) {
+    // Nada cambió → no tocar el DOM, el hover permanece intacto
+    return;
+  }
+  _lastListFingerprint = fingerprint;
+
+  // Reconstruir solo cuando hay cambios reales
   container.innerHTML = participants.map((p, i) => {
     const isAbsent = absent.includes(i);
     const cls = [
@@ -672,19 +744,65 @@ function logVisibleTasks() {
   }
 }
 
+// ── Botón flotante (último recurso si el sidebar nunca se detecta) ──
+function injectFloatingFallback() {
+  if (document.getElementById(TIMER_BUTTON_ID)) return;
+  console.warn("[Daily Timer] Jira no encontrado en sidebar tras 60 s. Usando botón flotante.");
+
+  const btn = document.createElement("button");
+  btn.id = TIMER_BUTTON_ID;
+  btn.textContent = "⏱";
+  btn.title = "Daily Timer";
+  Object.assign(btn.style, {
+    position: "fixed", bottom: "88px", left: "16px", zIndex: "99998",
+    width: "48px", height: "48px", borderRadius: "50%",
+    background: "#3b82f6", color: "#fff", border: "none",
+    cursor: "pointer", fontSize: "20px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.25)", transition: "background 0.15s",
+  });
+  btn.addEventListener("mouseenter", () => { btn.style.background = "#2563eb"; });
+  btn.addEventListener("mouseleave", () => { btn.style.background = "#3b82f6"; });
+  btn.addEventListener("click", () => togglePanel());
+  document.body.appendChild(btn);
+
+  if (!document.getElementById(PANEL_ID)) {
+    const panel = document.createElement("div");
+    panel.id = PANEL_ID;
+    panel.innerHTML = buildPanelHTML();
+    Object.assign(panel.style, {
+      position: "fixed", bottom: "24px", left: "16px", zIndex: "99999",
+      width: "320px", overflow: "hidden", maxHeight: "0",
+      transition: "max-height 0.28s ease",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    });
+    document.body.appendChild(panel);
+    injectPanelCSS();
+    bindPanelEvents();
+    setInterval(updatePanel, 200);
+  }
+}
+
 // ── Inyección con MutationObserver (Notion carga dinámicamente) ──
 function waitForNotionAndInject() {
-  if (getNotionSidebar()) {
-    injectTimerUI();
-    return;
-  }
-  const observer = new MutationObserver((_mutations, obs) => {
-    if (getNotionSidebar()) {
-      obs.disconnect();
-      injectTimerUI();
+  // Reintento cada 500 ms durante 60 s hasta que injectTimerUI() devuelva true
+  // (significa que encontró "Jira" e insertó el botón correctamente).
+  let retries = 0;
+  const retryInterval = setInterval(() => {
+    retries++;
+    if (retries > 120) {
+      clearInterval(retryInterval);
+      // Último recurso: botón flotante si tras 60 s nunca se encontró "Jira"
+      if (!document.getElementById(TIMER_BUTTON_ID)) {
+        injectFloatingFallback();
+      }
+      return;
     }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+    if (document.getElementById(TIMER_BUTTON_ID)) {
+      clearInterval(retryInterval);
+      return;
+    }
+    injectTimerUI();
+  }, 500);
 }
 
 // Solo ejecutar dentro de notion.so
