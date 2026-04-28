@@ -10,12 +10,12 @@ const UI_NOISE = new Set([
   // Inglés
   "New", "Filter", "Sort", "Search", "Group", "Properties",
   "Share", "Export", "Add a page", "Calculate", "Untitled",
-  "No assignee", "Empty", "Count", "Open", "Delete", "Duplicate",
+  "No assignee", "Unassigned", "Empty", "Count", "Open", "Delete", "Duplicate",
   "Skip to content", "···", "...",
   "Name",          // cabecera de columna por defecto en Notion (EN)
   "Load more groups", "New group", "+ New group", "Load more",
   // Español
-  "Sin título", "Ir al contenido", "Sin asignar", "Vacío",
+  "Sin título", "Ir al contenido", "Sin asignar", "Sin Asignado", "Vacío",
   "Nueva página", "+ Nueva página", "Nuevo", "Abrir", "Eliminar",
   "Filtrar", "Ordenar", "Agrupar", "Propiedades", "Compartir",
   "Añadir una página", "Calcular",
