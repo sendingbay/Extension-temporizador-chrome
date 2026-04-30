@@ -8,7 +8,7 @@ Temporizador de Daily para equipos. Se integra directamente en el **sidebar de N
 
 1. Descarga o clona el repositorio:
    ```bash
-   git clone https://github.com/Monica-pxl/Extensi-n-Chrome.git
+   git clone https://github.com/sendingbay/Extension-temporizador-chrome.git
    ```
 2. En Chrome, abre `chrome://extensions`.
 3. Activa el **Modo desarrollador** (esquina superior derecha).
