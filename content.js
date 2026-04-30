@@ -735,22 +735,9 @@ function renderParticipantList(participants, currentIndex, absent, done = []) {
   });
 }
 
-function logVisibleTasks() {
-  const tasks = extractNamesFromNotion();
-  if (tasks.length > 0) {
-    console.group("[Daily Timer] Tareas/elementos visibles en Notion:");
-    tasks.forEach((t, i) => console.log(`  ${i + 1}. ${t}`));
-    console.groupEnd();
-  } else {
-    console.log("[Daily Timer] No se encontraron tareas visibles en esta vista.");
-  }
-}
-
 // ── Botón flotante (último recurso si el sidebar nunca se detecta) ──
 function injectFloatingFallback() {
   if (document.getElementById(TIMER_BUTTON_ID)) return;
-  console.warn("[Daily Timer] Jira no encontrado en sidebar tras 60 s. Usando botón flotante.");
-
   const btn = document.createElement("button");
   btn.id = TIMER_BUTTON_ID;
   btn.textContent = "⏱";

@@ -1,10 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Daily Timer",
-  "version": "1.1",
-  "description": "Temporizador de Daily conectado a la base de datos de Notion",
+  "name": "Daily Timer for Notion",
+  "version": "1.0.0",
+  "description": "Scrum Daily standup timer integrated into the Notion sidebar. Auto-detects participants from the open board and gives each person 2 minutes. This extension is not affiliated with Notion.",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["https://api.notion.com/*", "https://www.notion.so/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Daily Timer",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
   "background": {
     "service_worker": "background.js"
   },

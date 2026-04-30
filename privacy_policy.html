@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy – Daily Timer for Notion</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 720px;
+      margin: 60px auto;
+      padding: 0 24px 80px;
+      color: #333;
+      line-height: 1.7;
+    }
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    .meta { color: #888; font-size: 14px; margin-bottom: 40px; }
+    h2 { font-size: 18px; margin-top: 36px; margin-bottom: 8px; }
+    p, li { font-size: 15px; }
+    ul { padding-left: 20px; }
+    a { color: #0052cc; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Daily Timer for Notion &nbsp;·&nbsp; Last updated: April 30, 2026</p>
+
+  <h2>1. Overview</h2>
+  <p>
+    Daily Timer for Notion is a browser extension that runs entirely within your browser.
+    We do not operate any backend server, and we do not collect, transmit, or store any
+    personal data on external systems.
+  </p>
+
+  <h2>2. Data we access</h2>
+  <ul>
+    <li>
+      <strong>Notion page content (DOM):</strong> when you click "Load list", the extension
+      reads the column headers or row names visible in the currently open Notion board tab.
+      This data never leaves your browser — it is used only to populate the participant list
+      in the timer UI.
+    </li>
+    <li>
+      <strong>Notion API (optional):</strong> if you choose to configure a Notion Integration
+      Token and Database ID in the extension settings, the extension will call the official
+      Notion API (<code>api.notion.com</code>) on your behalf to retrieve page titles and task
+      counts. Your token is stored locally in Chrome's <code>sync storage</code> and is sent
+      only to Notion's own servers. We never receive or store it.
+    </li>
+    <li>
+      <strong>Timer state:</strong> the running/paused state, participant list, and elapsed
+      time are stored in Chrome's <code>session storage</code> (cleared when you close the
+      browser) so the timer survives page reloads.
+    </li>
+  </ul>
+
+  <h2>3. Data we do NOT collect</h2>
+  <ul>
+    <li>We do not collect names, emails, or any personally identifiable information.</li>
+    <li>We do not send any data to our own servers — we have none.</li>
+    <li>We do not use analytics, tracking pixels, or cookies.</li>
+    <li>We do not sell, share, or disclose any data to third parties.</li>
+  </ul>
+
+  <h2>4. Third-party services</h2>
+  <p>
+    The optional API mode communicates with <a href="https://www.notion.so" target="_blank" rel="noopener">Notion</a>
+    using your own credentials. Please refer to
+    <a href="https://www.notion.so/Privacy-Policy-3468d120cf614d4c9014c09f6adc9091" target="_blank" rel="noopener">Notion's Privacy Policy</a>
+    for information about how Notion handles data.
+  </p>
+  <p>This extension is <strong>not affiliated with, endorsed by, or sponsored by Notion Labs, Inc.</strong></p>
+
+  <h2>5. Permissions used</h2>
+  <ul>
+    <li><code>storage</code> – to save your settings (API token, database ID) and timer state locally.</li>
+    <li><code>tabs</code> – to detect which Notion tab is active and inject the sidebar timer.</li>
+    <li><code>scripting</code> – to inject the timer panel into Notion pages.</li>
+    <li><code>https://www.notion.so/*</code> – to read the DOM of Notion pages (participant names).</li>
+    <li><code>https://api.notion.com/*</code> – to call the Notion API when the API mode is configured.</li>
+  </ul>
+
+  <h2>6. Changes to this policy</h2>
+  <p>
+    If this policy changes, we will update the "Last updated" date above.
+    Continued use of the extension after changes constitutes acceptance of the updated policy.
+  </p>
+
+  <h2>7. Contact</h2>
+  <p>
+    For questions about this privacy policy, open an issue on the
+    <a href="https://github.com/Monica-pxl/Extensi-n-Chrome" target="_blank" rel="noopener">GitHub repository</a>.
+  </p>
+</body>
+</html>
