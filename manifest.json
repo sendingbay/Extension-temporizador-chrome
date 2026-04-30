@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Daily Timer for Notion",
+  "name": "Daily Timer for Notion – Scrum Meeting Timer",
   "version": "1.0.0",
-  "description": "Scrum Daily standup timer integrated into the Notion sidebar. Auto-detects participants from the open board and gives each person 2 minutes. This extension is not affiliated with Notion.",
+  "description": "Scrum Daily standup timer that runs entirely in your browser. Injects a sidebar panel into Notion to manage 2-minute turns per participant. Reads only visible board column names to build the participant list — no data is sent outside your browser. Enhances the Notion interface locally and does not modify Notion servers. Not affiliated with Notion Labs, Inc.",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["https://api.notion.com/*", "https://www.notion.so/*"],
   "icons": {
