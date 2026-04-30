@@ -21,15 +21,9 @@ let timerState = { ...DEFAULT_STATE };
 const stateReady = chrome.storage.session.get("timerState").then(result => {
   if (result.timerState) {
     timerState = result.timerState;
-    // Si el service worker fue terminado mientras corría, pausar y conservar elapsed
-    if (timerState.running && timerState.startTime) {
-      timerState.elapsed = Math.min(
-        timerState.duration,
-        timerState.elapsed + (Date.now() - timerState.startTime)
-      );
-      timerState.startTime = null;
-      timerState.running = false;
-    }
+    // startTime es un timestamp de reloj real, por lo que el cálculo
+    // "Date.now() - startTime" sigue siendo correcto aunque el service worker
+    // haya sido terminado y reiniciado. No se pausa el temporizador.
   }
 });
 
@@ -404,7 +398,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }
 
           const participants = names.map(name => ({ name, taskCount: 1 }));
-          timerState = { ...DEFAULT_STATE, participants };
+          timerState = { ...DEFAULT_STATE, participants, running: true, startTime: Date.now() };
           saveState();
           sendResponse({ success: true, participants });
           break;
@@ -412,7 +406,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
         case "FETCH_PARTICIPANTS": {
           const participants = await fetchParticipants();
-          timerState = { ...DEFAULT_STATE, participants };
+          timerState = { ...DEFAULT_STATE, participants, running: true, startTime: Date.now() };
           saveState();
           sendResponse({ success: true, participants });
           break;
@@ -437,14 +431,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
 
         case "RESET_TIMER":
-          timerState.running   = false;
-          timerState.startTime = null;
+          timerState.running   = true;
+          timerState.startTime = Date.now();
           timerState.elapsed   = 0;
           saveState();
           sendResponse({ timerState });
           break;
 
-        case "NEXT_PERSON": {
+        case "NEXT_PERSON":
+        case "NEXT_AND_START": {
           const len    = timerState.participants.length;
           const absent = timerState.absent || [];
           if (len === 0) { sendResponse({ timerState }); break; }
@@ -459,9 +454,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // Si todos están ausentes, no moverse
           if (tries < len) {
             timerState.currentIndex = next;
-            timerState.running      = false;
-            timerState.startTime    = null;
             timerState.elapsed      = 0;
+            timerState.startTime    = Date.now();
+            timerState.running      = true;
           }
           saveState();
           sendResponse({ timerState });
@@ -487,9 +482,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             }
             if (tries < len) {
               timerState.currentIndex = next;
-              timerState.running      = false;
-              timerState.startTime    = null;
               timerState.elapsed      = 0;
+              timerState.startTime    = Date.now();
+              timerState.running      = true;
             }
           }
           saveState();
@@ -497,13 +492,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
         }
 
-        case "JUMP_TO": {
+        case "JUMP_TO":
+        case "JUMP_AND_START": {
           const idx = msg.index;
           if (idx >= 0 && idx < timerState.participants.length) {
             timerState.currentIndex = idx;
-            timerState.running      = false;
-            timerState.startTime    = null;
             timerState.elapsed      = 0;
+            timerState.startTime    = Date.now();
+            timerState.running      = true;
             saveState();
           }
           sendResponse({ timerState });
@@ -518,9 +514,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }
           timerState.participants = arr;
           timerState.currentIndex = 0;
-          timerState.running      = false;
-          timerState.startTime    = null;
           timerState.elapsed      = 0;
+          timerState.startTime    = Date.now();
+          timerState.running      = true;
           timerState.absent       = [];
           timerState.done         = [];
           saveState();

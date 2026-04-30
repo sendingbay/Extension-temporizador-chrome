@@ -108,7 +108,7 @@ function renderParticipants(participants, currentIndex, absent) {
     el.addEventListener("pointerdown", async e => {
       if (e.target.classList.contains("btn-absent")) return;
       resetLocalFlags();
-      await send("JUMP_TO", { index: parseInt(el.dataset.index, 10) });
+      await send("JUMP_AND_START", { index: parseInt(el.dataset.index, 10) });
     });
   });
 
@@ -170,11 +170,13 @@ async function updateUI() {
     wrap.classList.remove("warning", "finished");
   }
 
-  // Parar automáticamente cuando llegue a 0
+  // Pasar automáticamente a la siguiente persona cuando llegue a 0
   if (remaining === 0 && state.running && !hasAutoStopped) {
     hasAutoStopped = true;
-    await send("START_PAUSE");
     playEnd();
+    await send("NEXT_AND_START");
+    hasWarned      = false;
+    hasAutoStopped = false;
   }
 
   // Resetear flags locales si el timer está a cero y parado
@@ -278,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Botón: Siguiente persona ──
   document.getElementById("btn-next").addEventListener("click", async () => {
     resetLocalFlags();
-    await send("NEXT_PERSON");
+    await send("NEXT_AND_START");
   });
 
   // ── Botón: Opciones ──
